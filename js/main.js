@@ -111,16 +111,47 @@ function drawBoat(x, y) {
     ctx.translate(x, y);
     ctx.rotate(degToRad(CONFIG.boatHeading - 90));
 
+    // --- CASCO IZQUIERDO (con proa puntiaguda) ---
     ctx.fillStyle = '#ecf0f1';
-    ctx.fillRect(-20, -30, 8, 60);
-    ctx.fillRect(12, -30, 8, 60);
-    ctx.fillRect(-20, -10, 40, 5);
-    ctx.fillRect(-20, 10, 40, 5);
+    ctx.beginPath();
+    ctx.moveTo(-20, -35);  // Punta de la proa
+    ctx.lineTo(-12, -30);  // Lado derecho de la proa
+    ctx.lineTo(-12, 25);   // Lado derecho de la popa
+    ctx.lineTo(-20, 20);   // Esquina inferior izquierda
+    ctx.closePath();
+    ctx.fill();
 
+    // --- CASCO DERECHO (con proa puntiaguda) ---
+    ctx.beginPath();
+    ctx.moveTo(20, -35);   // Punta de la proa
+    ctx.lineTo(12, -30);   // Lado izquierdo de la proa
+    ctx.lineTo(12, 25);    // Lado izquierdo de la popa
+    ctx.lineTo(20, 20);    // Esquina inferior derecha
+    ctx.closePath();
+    ctx.fill();
+
+    // --- VIGAS DE CONEXIÓN ---
+    ctx.fillStyle = '#bdc3c7';
+    ctx.fillRect(-20, -15, 40, 4);  // Viga delantera
+    ctx.fillRect(-20, 10, 40, 4);   // Viga trasera
+
+    // --- PLATAFORMA CENTRAL ---
+    ctx.fillStyle = '#95a5a6';
+    ctx.fillRect(-10, -10, 20, 20);
+
+    // --- INDICADOR DE PROA (flecha) ---
+    ctx.fillStyle = '#e74c3c';
+    ctx.beginPath();
+    ctx.moveTo(0, -45);  // Punta de la flecha
+    ctx.lineTo(-5, -38);
+    ctx.lineTo(5, -38);
+    ctx.closePath();
+    ctx.fill();
+
+    // --- ALA MAYOR ---
     ctx.save();
     ctx.rotate(degToRad(CONFIG.sailTrim));
     
-    // Color del ala según configuración
     const wingColors = {
         light: '#2ecc71',
         medium: '#f39c12',
@@ -128,7 +159,6 @@ function drawBoat(x, y) {
     };
     ctx.fillStyle = wingColors[CONFIG.currentWing];
     
-    // Tamaño del ala según configuración
     const wingSizes = {
         light: 60,
         medium: 50,
@@ -136,11 +166,16 @@ function drawBoat(x, y) {
     };
     const wingHeight = wingSizes[CONFIG.currentWing];
     
-    ctx.fillRect(-2, -wingHeight/2, 4, wingHeight);
+    // Ala con forma más realista (más ancha en el medio)
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 3, wingHeight/2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
     ctx.restore();
 
     ctx.restore();
 }
+
 
 function drawHUD() {
     ctx.fillStyle = 'white';
