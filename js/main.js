@@ -293,25 +293,16 @@ function drawBoat(x, y) {
 
 
 function drawHUD() {
+    const crewInfo = getActiveCrewInfo();
+    
     ctx.fillStyle = 'white';
     ctx.font = '16px Arial';
     ctx.textAlign = 'left';
     
-    const y = canvas.height - 140;
+    const y = canvas.height - 180;
     ctx.fillText(`Velocidad: ${CONFIG.boatSpeed.toFixed(1)} nudos`, 20, y);
     ctx.fillText(`Rumbo: ${Math.round(CONFIG.boatHeading)}°`, 20, y + 25);
-    
-    // Mostrar trim del ala con indicación de lado
-    let trimText = `Trim del ala: ${CONFIG.sailTrim}°`;
-    if (CONFIG.sailTrim < -5) {
-        trimText += ' (Babor)';
-    } else if (CONFIG.sailTrim > 5) {
-        trimText += ' (Estribor)';
-    } else {
-        trimText += ' (Centro)';
-    }
-    ctx.fillText(trimText, 20, y + 50);
-    
+    ctx.fillText(`Trim del ala: ${CONFIG.sailTrim}°`, 20, y + 50);
     ctx.fillText(`Viento real: ${CONFIG.trueWindSpeed} kn desde ${CONFIG.trueWindDirection}°`, 20, y + 75);
     
     // Mostrar ala actual
@@ -319,10 +310,22 @@ function drawHUD() {
     ctx.fillStyle = '#f39c12';
     ctx.fillText(`Ala: ${polar.name}`, 20, y + 100);
     
+    // --- TRIPULANTE ACTIVO ---
+    ctx.fillStyle = crewInfo.color;
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText(`▶ ${crewInfo.name}`, 20, y + 130);
+    
+    ctx.fillStyle = 'white';
+    ctx.font = '14px Arial';
+    ctx.fillText(`Función: ${crewInfo.function}`, 40, y + 150);
+    
+    // Instrucciones
     ctx.font = '12px Arial';
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.fillText('← → Rumbo | ↑ ↓ Trim del ala (-90° a +90°)', 20, y + 125);
+    ctx.fillText('Dpad: seleccionar tripulante | Joystick: ejecutar función', 20, y + 175);
+    ctx.fillText('PC: Teclas 1-4 seleccionar | Flechas también funcionan', 20, y + 190);
 }
+
 
 
 function gameLoop(timestamp) {
