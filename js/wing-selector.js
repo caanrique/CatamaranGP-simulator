@@ -44,8 +44,8 @@ function renderWingSelector() {
     ];
     
     const startY = 180;
-    const boxHeight = 100;
-    const boxWidth = 400;
+    const boxHeight = 90;
+    const boxWidth = Math.min(400, canvas.width - 40);
     const boxX = (canvas.width - boxWidth) / 2;
     
     wings.forEach((wing, index) => {
@@ -63,19 +63,44 @@ function renderWingSelector() {
         
         // Texto
         ctx.fillStyle = 'white';
-        ctx.font = 'bold 24px Arial';
+        ctx.font = 'bold 22px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(wing.name, canvas.width / 2, y + 40);
+        ctx.fillText(wing.name, canvas.width / 2, y + 38);
         
         ctx.font = '16px Arial';
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.fillText(`Óptimo: ${wing.range}`, canvas.width / 2, y + 70);
+        ctx.fillText(`Óptimo: ${wing.range}`, canvas.width / 2, y + 65);
     });
+    
+    // BOTÓN CONFIRMAR (nuevo)
+    const confirmBtnWidth = 200;
+    const confirmBtnHeight = 50;
+    const confirmBtnX = (canvas.width - confirmBtnWidth) / 2;
+    const confirmBtnY = canvas.height - 120;
+    
+    // Guardar posición del botón para detección de tap
+    window.confirmBtnBounds = {
+        x: confirmBtnX,
+        y: confirmBtnY,
+        width: confirmBtnWidth,
+        height: confirmBtnHeight
+    };
+    
+    // Dibujar botón
+    ctx.fillStyle = '#27ae60';
+    ctx.fillRect(confirmBtnX, confirmBtnY, confirmBtnWidth, confirmBtnHeight);
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(confirmBtnX, confirmBtnY, confirmBtnWidth, confirmBtnHeight);
+    
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 20px Arial';
+    ctx.fillText('CONFIRMAR', canvas.width / 2, confirmBtnY + 32);
     
     // Instrucciones
     ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    ctx.font = '16px Arial';
-    ctx.fillText('Usa ↑ ↓ para seleccionar | ENTER para confirmar', canvas.width / 2, canvas.height - 50);
+    ctx.font = '14px Arial';
+    ctx.fillText('Toca CONFIRMAR o presiona ENTER', canvas.width / 2, canvas.height - 50);
 }
 
 function handleWingSelectorInput() {
@@ -83,6 +108,7 @@ function handleWingSelectorInput() {
     
     const input = getInput();
     
+    // Navegación con Dpad/táctil o teclado
     if (input.sailUp && !prevInput.sailUp) {
         const wings = ['light', 'medium', 'strong'];
         const currentIndex = wings.indexOf(selectedWing);
@@ -99,12 +125,30 @@ function handleWingSelectorInput() {
         renderWingSelector();
     }
     
+    // Confirmación con Enter (teclado)
     if (keys['Enter']) {
         hideWingSelector();
         return true;
     }
     
     return true;
+}
+
+// Detectar tap en el botón CONFIRMAR o en cualquier parte de la pantalla
+function handleWingSelectorTap(x, y) {
+    if (!wingSelectorVisible) return;
+    
+    // Verificar si el tap fue en el botón CONFIRMAR
+    const btn = window.confirmBtnBounds;
+    if (btn && x >= btn.x && x <= btn.x + btn.width && 
+        y >= btn.y && y <= btn.y + btn.height) {
+        hideWingSelector();
+        return;
+    }
+    
+    // También confirmar si se toca cualquier parte de la pantalla
+    // (comentado por ahora, descomenta si prefieres esta opción)
+    // hideWingSelector();
 }
 
 // Estado anterior para detectar cambios
