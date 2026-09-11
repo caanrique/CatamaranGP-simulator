@@ -170,7 +170,7 @@ function drawBoat(x, y) {
     ctx.translate(x, y);
     ctx.rotate(degToRad(CONFIG.boatHeading - 90));
 
-    // --- CASCO IZQUIERDO (con proa puntiaguda) ---
+    // --- CASCO IZQUIERDO ---
     ctx.fillStyle = '#ecf0f1';
     ctx.beginPath();
     ctx.moveTo(-20, -35);
@@ -180,7 +180,7 @@ function drawBoat(x, y) {
     ctx.closePath();
     ctx.fill();
 
-    // --- CASCO DERECHO (con proa puntiaguda) ---
+    // --- CASCO DERECHO ---
     ctx.beginPath();
     ctx.moveTo(20, -35);
     ctx.lineTo(12, -30);
@@ -207,23 +207,12 @@ function drawBoat(x, y) {
     ctx.closePath();
     ctx.fill();
 
-    // --- LÍNEA DE REFERENCIA (perpendicular al barco) ---
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
-    ctx.beginPath();
-    ctx.moveTo(-30, 0);
-    ctx.lineTo(30, 0);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // --- ALA MAYOR ---
+    // --- ALA MAYOR (inicia paralela al barco) ---
     ctx.save();
     
-    // Rotar el ala según el trim
-    // sailTrim: -90 (babor) a +90 (estribor)
-    // En el dibujo, 0° es perpendicular al barco (horizontal)
-    // Rotamos desde la posición horizontal (0°)
+    // sailTrim: 0 = paralela al barco (hacia popa)
+    // sailTrim: -90 = perpendicular hacia babor
+    // sailTrim: +90 = perpendicular hacia estribor
     ctx.rotate(degToRad(CONFIG.sailTrim));
     
     const wingColors = {
@@ -240,12 +229,12 @@ function drawBoat(x, y) {
     };
     const wingHeight = wingSizes[CONFIG.currentWing];
     
-    // Ala con forma elíptica
+    // Ala elíptica (vertical cuando sailTrim = 0, o sea paralela al barco)
     ctx.beginPath();
     ctx.ellipse(0, 0, 3, wingHeight/2, 0, 0, Math.PI * 2);
     ctx.fill();
     
-    // Línea central del ala para ver la dirección
+    // Línea central del ala
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -257,6 +246,7 @@ function drawBoat(x, y) {
 
     ctx.restore();
 }
+
 
 
 
