@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>CatamaranGP Simulator - F50 Catamaran</title>
+    <title>SailGP Simulator - F50 Catamaran</title>
     <style>
         * {
             margin: 0;
@@ -15,15 +15,115 @@
             background: #1a5276;
             font-family: Arial, sans-serif;
             touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
         canvas {
             display: block;
+        }
+        
+        /* Controles táctiles */
+        .touch-controls {
+            position: fixed;
+            bottom: 20px;
+            width: 100%;
+            display: none; /* Oculto por defecto, se muestra en móvil */
+            pointer-events: none;
+        }
+        
+        .dpad {
+            position: absolute;
+            left: 20px;
+            bottom: 0;
+            width: 150px;
+            height: 150px;
+            pointer-events: auto;
+        }
+        
+        .dpad-btn {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            transition: background 0.1s;
+        }
+        
+        .dpad-btn:active, .dpad-btn.active {
+            background: rgba(255, 255, 255, 0.6);
+        }
+        
+        .dpad-up { top: 0; left: 50px; }
+        .dpad-down { bottom: 0; left: 50px; }
+        .dpad-left { top: 50px; left: 0; }
+        .dpad-right { top: 50px; right: 0; }
+        
+        .joystick {
+            position: absolute;
+            right: 20px;
+            bottom: 0;
+            width: 150px;
+            height: 150px;
+            pointer-events: auto;
+        }
+        
+        .joystick-base {
+            position: absolute;
+            width: 150px;
+            height: 150px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+        }
+        
+        .joystick-handle {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.7);
+            border-radius: 50%;
+            top: 45px;
+            left: 45px;
+            transition: all 0.1s;
+        }
+        
+        /* Mostrar controles solo en pantallas táctiles */
+        @media (hover: none) and (pointer: coarse) {
+            .touch-controls {
+                display: block;
+            }
         }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    
+    <!-- Controles táctiles -->
+    <div class="touch-controls">
+        <!-- Dpad (izquierda) -->
+        <div class="dpad">
+            <div class="dpad-btn dpad-up" data-action="sail_up">↑</div>
+            <div class="dpad-btn dpad-down" data-action="sail_down">↓</div>
+            <div class="dpad-btn dpad-left" data-action="turn_left">←</div>
+            <div class="dpad-btn dpad-right" data-action="turn_right">→</div>
+        </div>
+        
+        <!-- Joystick (derecha) - Por ahora decorativo, lo usaremos en Etapa 3 -->
+        <div class="joystick">
+            <div class="joystick-base"></div>
+            <div class="joystick-handle" id="joystickHandle"></div>
+        </div>
+    </div>
+    
     <script src="js/physics.js"></script>
+    <script src="js/controls.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>
