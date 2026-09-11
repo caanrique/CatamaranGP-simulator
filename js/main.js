@@ -16,6 +16,27 @@ function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 }
+
+// --- DETECCIÓN DE TAP PARA EL SELECTOR DE ALA ---
+canvas.addEventListener('click', (e) => {
+    if (wingSelectorVisible) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        handleWingSelectorTap(x, y);
+    }
+});
+
+canvas.addEventListener('touchstart', (e) => {
+    if (wingSelectorVisible) {
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+        handleWingSelectorTap(x, y);
+    }
+});
+
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
