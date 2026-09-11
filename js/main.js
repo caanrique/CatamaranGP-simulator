@@ -27,22 +27,29 @@ const keys = {};
 window.addEventListener('keydown', (e) => { keys[e.key] = true; });
 window.addEventListener('keyup', (e) => { keys[e.key] = false; });
 
+// --- CONTROLES UNIFICADOS ---
 function handleInput() {
-    // Flecha izquierda/derecha: cambiar rumbo
-    if (keys['ArrowLeft']) {
-        CONFIG.boatHeading = normalizeAngle(CONFIG.boatHeading - 2);
+    const input = getInput();
+    
+    // Rumbo (Dpad izquierdo o joystick X)
+    const turnSpeed = 2;
+    if (input.turnLeft || input.joystickX < -0.3) {
+        CONFIG.boatHeading = normalizeAngle(CONFIG.boatHeading - turnSpeed);
     }
-    if (keys['ArrowRight']) {
-        CONFIG.boatHeading = normalizeAngle(CONFIG.boatHeading + 2);
+    if (input.turnRight || input.joystickX > 0.3) {
+        CONFIG.boatHeading = normalizeAngle(CONFIG.boatHeading + turnSpeed);
     }
-    // Flecha arriba/abajo: ajustar trim del ala
-    if (keys['ArrowUp']) {
-        CONFIG.sailTrim = Math.min(90, CONFIG.sailTrim + 1);
+    
+    // Trim del ala (Dpad arriba/abajo o joystick Y)
+    const trimSpeed = 1;
+    if (input.sailUp || input.joystickY > 0.3) {
+        CONFIG.sailTrim = Math.min(90, CONFIG.sailTrim + trimSpeed);
     }
-    if (keys['ArrowDown']) {
-        CONFIG.sailTrim = Math.max(0, CONFIG.sailTrim - 1);
+    if (input.sailDown || input.joystickY < -0.3) {
+        CONFIG.sailTrim = Math.max(0, CONFIG.sailTrim - trimSpeed);
     }
 }
+
 
 // --- RENDERIZADO ---
 function render() {
