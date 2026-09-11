@@ -75,36 +75,91 @@ function drawWindCompass(x, y) {
     ctx.save();
     ctx.translate(x, y);
     
+    // --- CÍRCULO EXTERNO DE LA BRÚJULA ---
     ctx.beginPath();
-    ctx.arc(0, 0, 50, 0, Math.PI * 2);
+    ctx.arc(0, 0, 55, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.5)';
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    const trueWindRad = degToRad(CONFIG.trueWindDirection - CONFIG.boatHeading - 90);
+    // --- MARCADORES DE NORTE (N), SUR (S), ESTE (E), OESTE (O) ---
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('N', 0, -45);
+    ctx.fillText('S', 0, 45);
+    ctx.fillText('E', 45, 0);
+    ctx.fillText('O', -45, 0);
+
+    // --- FLECHA DEL NORTE (fija, siempre apunta arriba) ---
+    ctx.beginPath();
+    ctx.moveTo(0, -50);
+    ctx.lineTo(-3, -42);
+    ctx.lineTo(3, -42);
+    ctx.closePath();
+    ctx.fillStyle = '#f39c12';
+    ctx.fill();
+
+    // --- FLECHA DEL VIENTO REAL (AZUL) ---
+    // Esta flecha muestra de dónde viene el viento REAL (dirección absoluta)
+    // Si el viento viene del norte (0°), apunta hacia abajo (sur)
+    const trueWindRad = degToRad(CONFIG.trueWindDirection + 180); // +180 porque el viento viene DE esa dirección
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(Math.cos(trueWindRad) * 40, Math.sin(trueWindRad) * 40);
+    ctx.lineTo(Math.cos(trueWindRad) * 35, Math.sin(trueWindRad) * 35);
     ctx.strokeStyle = '#3498db';
     ctx.lineWidth = 3;
     ctx.stroke();
+    
+    // Punta de la flecha del viento real
+    ctx.beginPath();
+    ctx.arc(Math.cos(trueWindRad) * 35, Math.sin(trueWindRad) * 35, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#3498db';
+    ctx.fill();
 
-    const appWindRad = degToRad(apparentWind.angle - 90);
+    // --- FLECHA DEL VIENTO APARENTE (ROJO) ---
+    // Esta flecha muestra el viento aparente RELATIVO al barco
+    const appWindRad = degToRad(apparentWind.angle + 180);
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(Math.cos(appWindRad) * 40, Math.sin(appWindRad) * 40);
+    ctx.lineTo(Math.cos(appWindRad) * 30, Math.sin(appWindRad) * 30);
     ctx.strokeStyle = '#e74c3c';
     ctx.lineWidth = 3;
     ctx.stroke();
+    
+    // Punta de la flecha del viento aparente
+    ctx.beginPath();
+    ctx.arc(Math.cos(appWindRad) * 30, Math.sin(appWindRad) * 30, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#e74c3c';
+    ctx.fill();
 
     ctx.restore();
 
+    // --- LEYENDA ---
     ctx.fillStyle = 'white';
     ctx.font = '12px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(`Viento Real: ${CONFIG.trueWindSpeed} kn`, x, y + 70);
-    ctx.fillText(`Viento Aparente: ${apparentWind.speed} kn @ ${Math.round(apparentWind.angle)}°`, x, y + 85);
+    
+    const legendY = y + 70;
+    
+    // Viento real
+    ctx.fillStyle = '#3498db';
+    ctx.fillText('● Viento Real (absoluto)', x, legendY);
+    
+    // Viento aparente
+    ctx.fillStyle = '#e74c3c';
+    ctx.fillText('● Viento Aparente (relativo)', x, legendY + 18);
+    
+    // Información numérica
+    ctx.fillStyle = 'white';
+    ctx.font = '11px Arial';
+    ctx.fillText(`Real: ${CONFIG.trueWindSpeed} kn desde ${CONFIG.trueWindDirection}°`, x, legendY + 38);
+    ctx.fillText(`Aparente: ${apparentWind.speed.toFixed(1)} kn @ ${Math.round(apparentWind.angle)}°`, x, legendY + 53);
 }
+
 
 function drawBoat(x, y) {
     ctx.save();
