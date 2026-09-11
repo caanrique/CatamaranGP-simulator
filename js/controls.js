@@ -1,35 +1,63 @@
 // ============================================
 // CATAMARANGP SIMULATOR - MÓDULO DE CONTROLES
-// Versión simplificada y robusta
+// Etapa 3: Dpad como selector de tripulantes
 // ============================================
 
-// Estado de input global
+// --- ESTADO DE INPUT ---
 const InputState = {
-    turnLeft: false,
-    turnRight: false,
-    sailUp: false,
-    sailDown: false,
-    joystickX: 0,
-    joystickY: 0
+    // Dpad (ahora para seleccionar tripulantes)
+    dpadUp: false,
+    dpadDown: false,
+    dpadLeft: false,
+    dpadRight: false,
+    
+    // Joystick (ahora para ejecutar funciones)
+    joystickX: 0,  // -1 a 1
+    joystickY: 0,  // -1 a 1
+    
+    // Teclas numéricas para selección directa (PC)
+    key1: false,
+    key2: false,
+    key3: false,
+    key4: false
 };
 
-// Controles de teclado
+// --- DETECCIÓN DE DISPOSITIVO TÁCTIL ---
+const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+// --- CONTROLES DE TECLADO ---
+const keys = {};
+
 window.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft') InputState.turnLeft = true;
-    if (e.key === 'ArrowRight') InputState.turnRight = true;
-    if (e.key === 'ArrowUp') InputState.sailUp = true;
-    if (e.key === 'ArrowDown') InputState.sailDown = true;
+    keys[e.key] = true;
+    updateInputFromKeys();
 });
 
 window.addEventListener('keyup', (e) => {
-    if (e.key === 'ArrowLeft') InputState.turnLeft = false;
-    if (e.key === 'ArrowRight') InputState.turnRight = false;
-    if (e.key === 'ArrowUp') InputState.sailUp = false;
-    if (e.key === 'ArrowDown') InputState.sailDown = false;
+    keys[e.key] = false;
+    updateInputFromKeys();
 });
 
-// Controles táctiles
-window.addEventListener('load', () => {
+function updateInputFromKeys() {
+    // Flechas del teclado → Dpad
+    InputState.dpadUp = keys['ArrowUp'] || false;
+    InputState.dpadDown = keys['ArrowDown'] || false;
+    InputState.dpadLeft = keys['ArrowLeft'] || false;
+    InputState.dpadRight = keys['ArrowRight'] || false;
+    
+    // Teclas numéricas para selección directa
+    InputState.key1 = keys['1'] || false;
+    InputState.key2 = keys['2'] || false;
+    InputState.key3 = keys['3'] || false;
+    InputState.key4 = keys['4'] || false;
+}
+
+// --- CONTROLES TÁCTILES ---
+if (isTouchDevice) {
+    setupTouchControls();
+}
+
+function setupTouchControls() {
     const dpadButtons = document.querySelectorAll('.dpad-btn');
     
     dpadButtons.forEach(btn => {
@@ -38,38 +66,106 @@ window.addEventListener('load', () => {
         btn.addEventListener('touchstart', (e) => {
             e.preventDefault();
             btn.classList.add('active');
-            setAction(action, true);
+            setDpadAction(action, true);
         });
         
         btn.addEventListener('touchend', (e) => {
             e.preventDefault();
             btn.classList.remove('active');
-            setAction(action, false);
+            setDpadAction(action, false);
         });
         
         btn.addEventListener('touchcancel', (e) => {
             e.preventDefault();
             btn.classList.remove('active');
-            setAction(action, false);
+            setDpadAction(action, false);
         });
     });
-});
-
-function setAction(action, isActive) {
-    if (action === 'turn_left') InputState.turnLeft = isActive;
-    if (action === 'turn_right') InputState.turnRight = isActive;
-    if (action === 'sail_up') InputState.sailUp = isActive;
-    if (action === 'sail_down') InputState.sailDown = isActive;
+    
+    setupJoystick();
 }
 
-// Función que main.js necesita
+function setDpadAction(action, isActive) {
+    switch(action) {
+        case 'turn_left':
+            InputState.dpadLeft = isActive;
+            break;
+        case 'turn_right':
+            InputState.dpadRight = isActive;
+            break;
+        case 'sail_up':
+            InputState.dpadUp = isActive;
+            break;
+        case 'sail_down':
+            InputState.dpadDown = isActive;
+            break;
+    }
+}
+
+// --- JOYSTICK ---
+function setupJoystick() {
+    const joystick = document.querySelector('.joystick');
+    const handle = document.getElementById('joystickHandle');
+    let isDragging = false;
+    let startX, startY;
+    
+    const maxDistance = 45;
+    
+    joystick.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        isDragging = true;
+        const touch = e.touches[0];
+        const rect = joystick.getBoundingClientRect();
+        startX = rect.left + rect.width / 2;
+        startY = rect.top + rect.height / 2;
+    });
+    
+    window.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+        
+        const touch = e.touches[0];
+        let deltaX = touch.clientX - startX;
+        let deltaY = touch.clientY - startY;
+        
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        if (distance > maxDistance) {
+            deltaX = (deltaX / distance) * maxDistance;
+            deltaY = (deltaY / distance) * maxDistance;
+        }
+        
+        handle.style.left = (45 + deltaX) + 'px';
+        handle.style.top = (45 + deltaY) + 'px';
+        
+        InputState.joystickX = deltaX / maxDistance;
+        InputState.joystickY = -deltaY / maxDistance;
+    });
+    
+    window.addEventListener('touchend', (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+        isDragging = false;
+        
+        handle.style.left = '45px';
+        handle.style.top = '45px';
+        
+        InputState.joystickX = 0;
+        InputState.joystickY = 0;
+    });
+}
+
+// --- FUNCIÓN PARA OBTENER INPUT UNIFICADO ---
 function getInput() {
     return {
-        turnLeft: InputState.turnLeft,
-        turnRight: InputState.turnRight,
-        sailUp: InputState.sailUp,
-        sailDown: InputState.sailDown,
+        dpadUp: InputState.dpadUp,
+        dpadDown: InputState.dpadDown,
+        dpadLeft: InputState.dpadLeft,
+        dpadRight: InputState.dpadRight,
         joystickX: InputState.joystickX,
-        joystickY: InputState.joystickY
+        joystickY: InputState.joystickY,
+        key1: InputState.key1,
+        key2: InputState.key2,
+        key3: InputState.key3,
+        key4: InputState.key4
     };
 }
