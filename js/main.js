@@ -33,6 +33,7 @@ function handleInput() {
     
     const input = getInput();
     
+    // Rumbo (Dpad izquierdo o joystick X)
     const turnSpeed = 2;
     if (input.turnLeft || input.joystickX < -0.3) {
         CONFIG.boatHeading = normalizeAngle(CONFIG.boatHeading - turnSpeed);
@@ -41,16 +42,19 @@ function handleInput() {
         CONFIG.boatHeading = normalizeAngle(CONFIG.boatHeading + turnSpeed);
     }
     
-    const trimSpeed = 1;
+    // Trim del ala (Dpad arriba/abajo o joystick Y)
+    // Ahora permite rotación completa de -90 a +90 grados
+    const trimSpeed = 2;
     if (input.sailUp || input.joystickY > 0.3) {
         CONFIG.sailTrim = Math.min(90, CONFIG.sailTrim + trimSpeed);
     }
     if (input.sailDown || input.joystickY < -0.3) {
-        CONFIG.sailTrim = Math.max(0, CONFIG.sailTrim - trimSpeed);
+        CONFIG.sailTrim = Math.max(-90, CONFIG.sailTrim - trimSpeed);
     }
     
     updatePrevInput();
 }
+
 
 function render() {
     if (wingSelectorVisible) {
