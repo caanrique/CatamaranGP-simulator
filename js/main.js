@@ -1,20 +1,17 @@
 // ============================================
-// SAILGP SIMULATOR - MÓDULO PRINCIPAL
-// Etapa 1: Loop de juego y renderizado básico
+// CATAMARANGP SIMULATOR - MÓDULO PRINCIPAL
+// Etapa 2: Integración de selector de ala
 // ============================================
 
-// --- REFERENCIAS AL CANVAS ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// --- ESTADO DEL JUEGO ---
 let gameState = {
     running: true,
     lastTime: 0,
     frameCount: 0
 };
 
-// --- AJUSTAR CANVAS AL TAMAÑO DE PANTALLA ---
 function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -22,16 +19,19 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// --- CONTROLES DE TECLADO ---
 const keys = {};
 window.addEventListener('keydown', (e) => { keys[e.key] = true; });
 window.addEventListener('keyup', (e) => { keys[e.key] = false; });
 
-// --- CONTROLES UNIFICADOS ---
 function handleInput() {
+    if (wingSelectorVisible) {
+        handleWingSelectorInput();
+        updatePrevInput();
+        return;
+    }
+    
     const input = getInput();
     
-    // Rumbo (Dpad izquierdo o joystick X)
     const turnSpeed = 2;
     if (input.turnLeft || input.joystickX < -0.3) {
         CONFIG.boatHeading = normalizeAngle(CONFIG.boatHeading - turnSpeed);
@@ -40,7 +40,6 @@ function handleInput() {
         CONFIG.boatHeading = normalizeAngle(CONFIG.boatHeading + turnSpeed);
     }
     
-    // Trim del ala (Dpad arriba/abajo o joystick Y)
     const trimSpeed = 1;
     if (input.sailUp || input.joystickY > 0.3) {
         CONFIG.sailTrim = Math.min(90, CONFIG.sailTrim + trimSpeed);
@@ -48,25 +47,24 @@ function handleInput() {
     if (input.sailDown || input.joystickY < -0.3) {
         CONFIG.sailTrim = Math.max(0, CONFIG.sailTrim - trimSpeed);
     }
+    
+    updatePrevInput();
 }
 
-
-// --- RENDERIZADO ---
 function render() {
-    // Limpiar canvas (color de mar)
+    if (wingSelectorVisible) {
+        renderWingSelector();
+        return;
+    }
+    
     ctx.fillStyle = '#1a5276';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
 
-    // Dibujar brújula de viento
     drawWindCompass(centerX, 80);
-
-    // Dibujar barco en el centro
     drawBoat(centerX, centerY);
-
-    // Dibujar HUD con información
     drawHUD();
 }
 
@@ -76,14 +74,12 @@ function drawWindCompass(x, y) {
     ctx.save();
     ctx.translate(x, y);
     
-    // Círculo de la brújula
     ctx.beginPath();
     ctx.arc(0, 0, 50, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(255,255,255,0.5)';
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Flecha del viento real (azul)
     const trueWindRad = degToRad(CONFIG.trueWindDirection - CONFIG.boatHeading - 90);
     ctx.beginPath();
     ctx.moveTo(0, 0);
@@ -92,7 +88,6 @@ function drawWindCompass(x, y) {
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // Flecha del viento aparente (rojo)
     const appWindRad = degToRad(apparentWind.angle - 90);
     ctx.beginPath();
     ctx.moveTo(0, 0);
@@ -103,7 +98,6 @@ function drawWindCompass(x, y) {
 
     ctx.restore();
 
-    // Etiquetas
     ctx.fillStyle = 'white';
     ctx.font = '12px Arial';
     ctx.textAlign = 'center';
@@ -116,18 +110,32 @@ function drawBoat(x, y) {
     ctx.translate(x, y);
     ctx.rotate(degToRad(CONFIG.boatHeading - 90));
 
-    // Casco del catamarán (simplificado)
     ctx.fillStyle = '#ecf0f1';
-    ctx.fillRect(-20, -30, 8, 60);  // Casco izquierdo
-    ctx.fillRect(12, -30, 8, 60);   // Casco derecho
-    ctx.fillRect(-20, -10, 40, 5);  // Viga delantera
-    ctx.fillRect(-20, 10, 40, 5);   // Viga trasera
+    ctx.fillRect(-20, -30, 8, 60);
+    ctx.fillRect(12, -30, 8, 60);
+    ctx.fillRect(-20, -10, 40, 5);
+    ctx.fillRect(-20, 10, 40, 5);
 
-    // Ala mayor
     ctx.save();
     ctx.rotate(degToRad(CONFIG.sailTrim));
-    ctx.fillStyle = '#e74c3c';
-    ctx.fillRect(-2, -25, 4, 50);
+    
+    // Color del ala según configuración
+    const wingColors = {
+        light: '#2ecc71',
+        medium: '#f39c12',
+        strong: '#e74c3c'
+    };
+    ctx.fillStyle = wingColors[CONFIG.currentWing];
+    
+    // Tamaño del ala según configuración
+    const wingSizes = {
+        light: 60,
+        medium: 50,
+        strong: 40
+    };
+    const wingHeight = wingSizes[CONFIG.currentWing];
+    
+    ctx.fillRect(-2, -wingHeight/2, 4, wingHeight);
     ctx.restore();
 
     ctx.restore();
@@ -138,32 +146,39 @@ function drawHUD() {
     ctx.font = '16px Arial';
     ctx.textAlign = 'left';
     
-    const y = canvas.height - 120;
+    const y = canvas.height - 140;
     ctx.fillText(`Velocidad: ${CONFIG.boatSpeed.toFixed(1)} nudos`, 20, y);
     ctx.fillText(`Rumbo: ${Math.round(CONFIG.boatHeading)}°`, 20, y + 25);
     ctx.fillText(`Trim del ala: ${CONFIG.sailTrim}°`, 20, y + 50);
     ctx.fillText(`Viento real: ${CONFIG.trueWindSpeed} kn desde ${CONFIG.trueWindDirection}°`, 20, y + 75);
     
-    // Instrucciones
+    // Mostrar ala actual
+    const polar = getCurrentPolar();
+    ctx.fillStyle = '#f39c12';
+    ctx.fillText(`Ala: ${polar.name}`, 20, y + 100);
+    
     ctx.font = '12px Arial';
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.fillText('← → Rumbo | ↑ ↓ Trim del ala', 20, y + 100);
+    ctx.fillText('← → Rumbo | ↑ ↓ Trim del ala', 20, y + 125);
 }
 
-// --- LOOP PRINCIPAL ---
 function gameLoop(timestamp) {
     if (!gameState.running) return;
 
     handleInput();
-    updateBoatSpeed();
+    
+    if (!wingSelectorVisible) {
+        updateBoatSpeed();
+    }
+    
     render();
 
     gameState.frameCount++;
     requestAnimationFrame(gameLoop);
 }
 
-// --- INICIAR JUEGO ---
 window.addEventListener('load', () => {
-    console.log('SailGP Simulator - Etapa 1 cargado');
+    console.log('CatamaranGP Simulator - Etapa 2 cargado');
+    showWingSelector();
     requestAnimationFrame(gameLoop);
 });
