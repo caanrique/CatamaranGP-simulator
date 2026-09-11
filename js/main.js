@@ -173,26 +173,26 @@ function drawBoat(x, y) {
     // --- CASCO IZQUIERDO (con proa puntiaguda) ---
     ctx.fillStyle = '#ecf0f1';
     ctx.beginPath();
-    ctx.moveTo(-20, -35);  // Punta de la proa
-    ctx.lineTo(-12, -30);  // Lado derecho de la proa
-    ctx.lineTo(-12, 25);   // Lado derecho de la popa
-    ctx.lineTo(-20, 20);   // Esquina inferior izquierda
+    ctx.moveTo(-20, -35);
+    ctx.lineTo(-12, -30);
+    ctx.lineTo(-12, 25);
+    ctx.lineTo(-20, 20);
     ctx.closePath();
     ctx.fill();
 
     // --- CASCO DERECHO (con proa puntiaguda) ---
     ctx.beginPath();
-    ctx.moveTo(20, -35);   // Punta de la proa
-    ctx.lineTo(12, -30);   // Lado izquierdo de la proa
-    ctx.lineTo(12, 25);    // Lado izquierdo de la popa
-    ctx.lineTo(20, 20);    // Esquina inferior derecha
+    ctx.moveTo(20, -35);
+    ctx.lineTo(12, -30);
+    ctx.lineTo(12, 25);
+    ctx.lineTo(20, 20);
     ctx.closePath();
     ctx.fill();
 
     // --- VIGAS DE CONEXIÓN ---
     ctx.fillStyle = '#bdc3c7';
-    ctx.fillRect(-20, -15, 40, 4);  // Viga delantera
-    ctx.fillRect(-20, 10, 40, 4);   // Viga trasera
+    ctx.fillRect(-20, -15, 40, 4);
+    ctx.fillRect(-20, 10, 40, 4);
 
     // --- PLATAFORMA CENTRAL ---
     ctx.fillStyle = '#95a5a6';
@@ -201,14 +201,29 @@ function drawBoat(x, y) {
     // --- INDICADOR DE PROA (flecha) ---
     ctx.fillStyle = '#e74c3c';
     ctx.beginPath();
-    ctx.moveTo(0, -45);  // Punta de la flecha
+    ctx.moveTo(0, -45);
     ctx.lineTo(-5, -38);
     ctx.lineTo(5, -38);
     ctx.closePath();
     ctx.fill();
 
+    // --- LÍNEA DE REFERENCIA (perpendicular al barco) ---
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(-30, 0);
+    ctx.lineTo(30, 0);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
     // --- ALA MAYOR ---
     ctx.save();
+    
+    // Rotar el ala según el trim
+    // sailTrim: -90 (babor) a +90 (estribor)
+    // En el dibujo, 0° es perpendicular al barco (horizontal)
+    // Rotamos desde la posición horizontal (0°)
     ctx.rotate(degToRad(CONFIG.sailTrim));
     
     const wingColors = {
@@ -225,15 +240,24 @@ function drawBoat(x, y) {
     };
     const wingHeight = wingSizes[CONFIG.currentWing];
     
-    // Ala con forma más realista (más ancha en el medio)
+    // Ala con forma elíptica
     ctx.beginPath();
     ctx.ellipse(0, 0, 3, wingHeight/2, 0, 0, Math.PI * 2);
     ctx.fill();
+    
+    // Línea central del ala para ver la dirección
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, -wingHeight/2);
+    ctx.lineTo(0, wingHeight/2);
+    ctx.stroke();
     
     ctx.restore();
 
     ctx.restore();
 }
+
 
 
 function drawHUD() {
