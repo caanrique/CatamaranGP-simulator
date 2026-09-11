@@ -9,7 +9,7 @@ const CONFIG = {
     trueWindDirection: 90,
     boatSpeed: 0,
     boatHeading: 0,
-    sailTrim: 45,
+    sailTrim: 0,  // -90 (babor) a +90 (estribor), 0 = centro
     maxBoatSpeed: 55,
     accelerationFactor: 0.02,
     currentWing: 'medium' // 'light', 'medium', 'strong'
