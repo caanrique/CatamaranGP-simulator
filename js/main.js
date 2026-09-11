@@ -24,6 +24,20 @@ const keys = {};
 window.addEventListener('keydown', (e) => { keys[e.key] = true; });
 window.addEventListener('keyup', (e) => { keys[e.key] = false; });
 
+// --- ESTADO ANTERIOR DEL DPAD (para detectar cambios) ---
+let prevDpad = {
+    up: false,
+    down: false,
+    left: false,
+    right: false
+};
+let prevKeys = {
+    key1: false,
+    key2: false,
+    key3: false,
+    key4: false
+};
+
 function handleInput() {
     if (wingSelectorVisible) {
         handleWingSelectorInput();
@@ -33,26 +47,54 @@ function handleInput() {
     
     const input = getInput();
     
-    // Rumbo (Dpad izquierdo o joystick X)
-    const turnSpeed = 2;
-    if (input.turnLeft || input.joystickX < -0.3) {
-        CONFIG.boatHeading = normalizeAngle(CONFIG.boatHeading - turnSpeed);
+    // --- SELECCIÓN DE TRIPULANTE CON DPAD ---
+    // Arriba = Timonel
+    if (input.dpadUp && !prevDpad.up) {
+        CrewState.activeRole = CREW_ROLES.HELMSMAN;
     }
-    if (input.turnRight || input.joystickX > 0.3) {
-        CONFIG.boatHeading = normalizeAngle(CONFIG.boatHeading + turnSpeed);
+    // Derecha = Wing Trimmer
+    if (input.dpadRight && !prevDpad.right) {
+        CrewState.activeRole = CREW_ROLES.WING_TRIMMER;
+    }
+    // Abajo = Grinder 2 (Estribor)
+    if (input.dpadDown && !prevDpad.down) {
+        CrewState.activeRole = CREW_ROLES.GRINDER_2;
+    }
+    // Izquierda = Grinder 1 (Babor)
+    if (input.dpadLeft && !prevDpad.left) {
+        CrewState.activeRole = CREW_ROLES.GRINDER_1;
     }
     
-    // Trim del ala (Dpad arriba/abajo o joystick Y)
-    // Ahora permite rotación completa de -90 a +90 grados
-    const trimSpeed = 2;
-    if (input.sailUp || input.joystickY > 0.3) {
-        CONFIG.sailTrim = Math.min(90, CONFIG.sailTrim + trimSpeed);
+    // --- SELECCIÓN DIRECTA CON TECLAS NUMÉRICAS (PC) ---
+    if (input.key1 && !prevKeys.key1) {
+        CrewState.activeRole = CREW_ROLES.HELMSMAN;
     }
-    if (input.sailDown || input.joystickY < -0.3) {
-        CONFIG.sailTrim = Math.max(-90, CONFIG.sailTrim - trimSpeed);
+    if (input.key2 && !prevKeys.key2) {
+        CrewState.activeRole = CREW_ROLES.WING_TRIMMER;
+    }
+    if (input.key3 && !prevKeys.key3) {
+        CrewState.activeRole = CREW_ROLES.GRINDER_1;
+    }
+    if (input.key4 && !prevKeys.key4) {
+        CrewState.activeRole = CREW_ROLES.GRINDER_2;
     }
     
-    updatePrevInput();
+    // --- EJECUTAR FUNCIÓN DEL TRIPULANTE CON JOYSTICK ---
+    executeCrewAction(input.joystickX, input.joystickY);
+    
+    // --- ACTUALIZAR ESTADO ANTERIOR ---
+    prevDpad = {
+        up: input.dpadUp,
+        down: input.dpadDown,
+        left: input.dpadLeft,
+        right: input.dpadRight
+    };
+    prevKeys = {
+        key1: input.key1,
+        key2: input.key2,
+        key3: input.key3,
+        key4: input.key4
+    };
 }
 
 
