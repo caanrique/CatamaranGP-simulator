@@ -20,7 +20,9 @@ const CONFIG = {
     flapAngle: 0,
     
     // --- JIB (FOQUE) ---
+        // Jib (vela de proa)
     jibActive: false,
+    jibAngle: 0,  // Ángulo de apertura del jib (0 = cerrado, 30 = abierto)
     
     // --- FOILS ---
     foilHeight: 0,

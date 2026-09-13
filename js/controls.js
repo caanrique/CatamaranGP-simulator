@@ -26,7 +26,17 @@ const InputState = {
     
     // Cámara (joystick derecho)
     cameraX: 0,   // -1 a 1 (órbita horizontal)
-    cameraY: 0    // -1 a 1 (zoom vertical)
+    cameraY: 0,    // -1 a 1 (zoom vertical)
+
+        // Cámara (joystick derecho + mouse)
+    cameraX: 0,
+    cameraY: 0,
+    
+    // NUEVO: Control de cámara por mouse
+    cameraOrbitX: 0,   // Rotación horizontal acumulada
+    cameraOrbitY: 0,   // Rotación vertical acumulada (opcional)
+    cameraZoom: 0,     // Zoom acumulado
+    mouseDragging: false
 };
 
 // --- DETECCIÓN DE DISPOSITIVO TÁCTIL ---
@@ -46,11 +56,39 @@ window.addEventListener('keyup', (e) => {
 });
 
 function updateInputFromKeys() {
-    // Flechas del teclado → Dpad (selección y movimiento)
-    InputState.dpadUp = keys['ArrowUp'] || false;
-    InputState.dpadDown = keys['ArrowDown'] || false;
-    InputState.dpadLeft = keys['ArrowLeft'] || false;
-    InputState.dpadRight = keys['ArrowRight'] || false;
+    // Detectar si Shift está presionado
+    const shiftPressed = keys['Shift'] || false;
+    
+    // Si Shift está presionado, las flechas controlan la CÁMARA
+    if (shiftPressed) {
+        // Cámara: flechas controlan orbitación y zoom
+        InputState.dpadUp = false;
+        InputState.dpadDown = false;
+        InputState.dpadLeft = false;
+        InputState.dpadRight = false;
+        
+        let camX = 0;
+        let camY = 0;
+        
+        if (keys['ArrowLeft']) camX = -1;   // Orbitar izquierda
+        if (keys['ArrowRight']) camX = 1;   // Orbitar derecha
+        if (keys['ArrowUp']) camY = -1;     // Zoom in (acercar)
+        if (keys['ArrowDown']) camY = 1;    // Zoom out (alejar)
+        
+        InputState.cameraX = camX;
+        InputState.cameraY = camY;
+    } 
+    // Si Shift NO está presionado, las flechas controlan el BARCO (normal)
+    else {
+        InputState.dpadUp = keys['ArrowUp'] || false;
+        InputState.dpadDown = keys['ArrowDown'] || false;
+        InputState.dpadLeft = keys['ArrowLeft'] || false;
+        InputState.dpadRight = keys['ArrowRight'] || false;
+        
+        // Resetear control de cámara cuando no se usa Shift
+        InputState.cameraX = 0;
+        InputState.cameraY = 0;
+    }
     
     // Teclas numéricas para selección directa
     InputState.key1 = keys['1'] || false;
@@ -135,6 +173,61 @@ function setupJoystick() {
     setupSingleJoystick('joystickLeft', 'joystickHandleLeft', 'left');
     setupSingleJoystick('joystickRight', 'joystickHandleRight', 'right');
 }
+
+// --- CONTROL DE CÁMARA POR MOUSE ---
+function setupMouseCamera() {
+    const canvas = document.getElementById('canvas3d');
+    if (!canvas) return;
+    
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+    
+    // Click izquierdo para empezar a orbitar
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 0) { // Solo click izquierdo
+            InputState.mouseDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        }
+    });
+    
+    // Mover mouse mientras se arrastra
+    window.addEventListener('mousemove', (e) => {
+        if (!InputState.mouseDragging) return;
+        
+        const deltaX = e.clientX - lastMouseX;
+        const deltaY = e.clientY - lastMouseY;
+        
+        // Acumular rotación (más sensible que el joystick)
+        InputState.cameraOrbitX += deltaX * 0.005;
+        InputState.cameraOrbitY += deltaY * 0.003;
+        
+        // Limitar rotación vertical para no dar vueltas completas
+        InputState.cameraOrbitY = Math.max(-0.5, Math.min(1.2, InputState.cameraOrbitY));
+        
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+    });
+    
+    // Soltar click para dejar de orbitar
+    window.addEventListener('mouseup', (e) => {
+        if (e.button === 0) {
+            InputState.mouseDragging = false;
+        }
+    });
+    
+    // Scroll del mouse para zoom
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        InputState.cameraZoom += e.deltaY * 0.02;
+        
+        // Limitar zoom entre 10 y 80 unidades
+        InputState.cameraZoom = Math.max(10, Math.min(80, InputState.cameraZoom));
+    }, { passive: false });
+}
+
+// Activar automáticamente al cargar
+setupMouseCamera();
 
 function setupSingleJoystick(joystickId, handleId, side) {
     const joystick = document.getElementById(joystickId);

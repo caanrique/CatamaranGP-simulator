@@ -164,6 +164,16 @@ function executeCrewAction(joyX, joyY) {
                 ));
             }
             break;
+
+        case CREW_ROLES.JIB_TRIMMER: // Si tienes un rol específico para el jib
+            // Control del ángulo del jib con A/D
+            if (Math.abs(joyX) > threshold) {
+                const jibSpeed = 1.0 * Math.abs(joyX);
+                CONFIG.jibAngle = Math.max(-30, Math.min(30,
+                    CONFIG.jibAngle + (joyX > 0 ? jibSpeed : -jibSpeed)
+                ));
+            }
+            break;
     }
 }
 

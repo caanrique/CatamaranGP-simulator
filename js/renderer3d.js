@@ -1,25 +1,25 @@
 // ============================================
 // CATAMARANGP SIMULATOR - MOTOR 3D (THREE.JS)
-// Versión mejorada: ala rediseñada, cámara controlable, glow en tripulantes
+// Versión con agua realista y estela de espuma
 // ============================================
 
 let scene, camera, renderer;
 let boatGroup, mastGroup, flapMesh;
-let foils = { port: null, starboard: null };
+let jibMesh;
+let foils = { frontPort: null, frontStarboard: null, rearPort: null, rearStarboard: null };
 let crewMeshes = {};
-let crewGlows = {}; // Halos de luz para tripulante activo
+let crewGlows = {};
+let water, wakeParticles = [];
 
-// Estado de la cámara
 let cameraState = {
-    distance: 25,      // Distancia al barco (zoom)
-    angle: 0,          // Ángulo de órbita (radianes)
-    height: 15         // Altura de la cámara
+    distance: 25,
+    angle: 0,
+    height: 15
 };
 
 function init3D() {
     const canvas = document.getElementById('canvas3d');
     
-    // 1. Escena y Cámara
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
     scene.fog = new THREE.Fog(0x87CEEB, 50, 300);
@@ -28,137 +28,239 @@ function init3D() {
     camera.position.set(0, 15, 25);
     camera.lookAt(0, 0, 0);
 
-    // 2. Renderer
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
 
-    // 3. Luces
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
     dirLight.position.set(50, 100, 50);
     dirLight.castShadow = true;
     scene.add(dirLight);
 
-    // 4. Agua
+    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
+    dirLight2.position.set(-50, 50, -50);
+    scene.add(dirLight2);
+
+    const dirLight3 = new THREE.DirectionalLight(0xffffff, 0.3);
+    dirLight3.position.set(0, -50, 0);
+    scene.add(dirLight3);
+
+    // AGUA REALISTA con Water.js
+    createRealisticWater();
+    
+    // SISTEMA DE ESTELA
+    createWakeSystem();
+
+    createBoat();
+    window.addEventListener('resize', onWindowResize, false);
+}
+
+function createRealisticWater() {
     const waterGeometry = new THREE.PlaneGeometry(1000, 1000);
-    const waterMaterial = new THREE.MeshPhongMaterial({ 
-        color: 0x1a5276, 
-        transparent: true, 
-        opacity: 0.8,
-        shininess: 80
+    
+    water = new THREE.Water(waterGeometry, {
+        textureWidth: 512,
+        textureHeight: 512,
+        waterNormals: new THREE.TextureLoader().load(
+            'https://threejs.org/examples/textures/waternormals.jpg',
+            function (texture) {
+                texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+            }
+        ),
+        sunDirection: new THREE.Vector3(0, 1, 0),
+        sunColor: 0xffffff,
+        waterColor: 0x001e0f,
+        distortionScale: 3.7,
+        fog: scene.fog !== undefined
     });
-    const water = new THREE.Mesh(waterGeometry, waterMaterial);
+    
     water.rotation.x = -Math.PI / 2;
     water.position.y = -0.5;
     scene.add(water);
+}
 
-    // 5. Crear el Barco
-    createBoat();
-
-    window.addEventListener('resize', onWindowResize, false);
+function createWakeSystem() {
+    // Crear 80 partículas de espuma (más cantidad para línea continua)
+    const particleGeo = new THREE.PlaneGeometry(2, 2);
+    const particleMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide
+    });
+    
+    for (let i = 0; i < 80; i++) {
+        const particle = new THREE.Mesh(particleGeo, particleMat.clone());
+        particle.visible = false;
+        particle.rotation.x = -Math.PI / 2;
+        scene.add(particle); // Se añaden a la ESCENA, no al barco
+        wakeParticles.push({
+            mesh: particle,
+            life: 0,
+            maxLife: 150 // 2.5 segundos de duración
+        });
+    }
 }
 
 function createBoat() {
     boatGroup = new THREE.Group();
     scene.add(boatGroup);
 
-    const hullMaterial = new THREE.MeshPhongMaterial({ color: 0xecf0f1 });
-    const deckMaterial = new THREE.MeshPhongMaterial({ color: 0x95a5a6 });
+    const loader = new THREE.OBJLoader();
+    loader.load(
+        'models/catamaran.obj',
+        function (object) {
+            object.scale.set(0.26, 0.26, 0.26); 
+            object.position.set(0, 2, 0);
+            
+            object.traverse(function (child) {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    child.material = new THREE.MeshPhongMaterial({ 
+                        color: 0xecf0f1, 
+                        shininess: 50,
+                        side: THREE.DoubleSide 
+                    });
+                }
+            });
+            
+            boatGroup.add(object);
+        },
+        function (xhr) {
+            console.log((xhr.loaded / xhr.total * 100) + '% del modelo cargado');
+        },
+        function (error) {
+            console.error('❌ Error cargando el modelo OBJ:', error);
+        }
+    );
+
+    createWing();
+    createJib();
+    createFoils();
+    createCrew();
+}
+
+function createWing() {
     const wingMaterial = new THREE.MeshPhongMaterial({ color: 0xf39c12 });
-
-    // --- CASCOS ---
-    const hullGeo = new THREE.BoxGeometry(4, 3, 20);
     
-    const portHull = new THREE.Mesh(hullGeo, hullMaterial);
-    portHull.position.set(-8, 0, 0);
-    portHull.castShadow = true;
-    boatGroup.add(portHull);
-
-    const starboardHull = new THREE.Mesh(hullGeo, hullMaterial);
-    starboardHull.position.set(8, 0, 0);
-    starboardHull.castShadow = true;
-    boatGroup.add(starboardHull);
-
-    // --- PLATAFORMA ---
-    const deckGeo = new THREE.BoxGeometry(20, 1, 12);
-    const deck = new THREE.Mesh(deckGeo, deckMaterial);
-    deck.position.set(0, 2, 0);
-    deck.castShadow = true;
-    boatGroup.add(deck);
-
-    // --- DIMENSIONES DEL ALA según tipo ---
     const wingDimensions = {
         light:  { height: 29, mastLength: 2.48, flapLength: 1.52 },
         medium: { height: 24, mastLength: 2.48, flapLength: 1.52 },
         strong: { height: 18, mastLength: 2.48, flapLength: 1.52 }
     };
     const wing = wingDimensions[CONFIG.currentWing] || wingDimensions.medium;
-    const wingWidth = 0.7; // 70 cm
+    const wingWidth = 0.7;
 
-    // --- GRUPO DEL MÁSTIL (eje de rotación en borde de PROA) ---
     mastGroup = new THREE.Group();
-    mastGroup.position.set(0, 2.5, 0);
+    mastGroup.position.set(0, 2.5, -1.5);
     boatGroup.add(mastGroup);
 
-    // --- MÁSTIL (Leading Edge): Rectángulo VERTICAL ---
     const mastGeo = new THREE.BoxGeometry(wingWidth, wing.height, wing.mastLength);
     const mast = new THREE.Mesh(mastGeo, wingMaterial);
     mast.position.set(0, wing.height / 2, wing.mastLength / 2);
     mast.castShadow = true;
     mastGroup.add(mast);
 
-    // --- BISAGRA: En el borde de POPA del mástil ---
     const hingeGeo = new THREE.SphereGeometry(0.4, 16, 16);
     const hingeMat = new THREE.MeshPhongMaterial({ color: 0x34495e });
     const hinge = new THREE.Mesh(hingeGeo, hingeMat);
     hinge.position.set(0, wing.height / 2, wing.mastLength);
     mastGroup.add(hinge);
 
-    // --- FLAP TRASERO: Triángulo VERTICAL ---
-    // Shape en plano XY: base en Y=0, punta en Y=flapLength
     const flapShape = new THREE.Shape();
     flapShape.moveTo(-wingWidth/2, 0);
     flapShape.lineTo(wingWidth/2, 0);
     flapShape.lineTo(0, wing.flapLength);
     flapShape.lineTo(-wingWidth/2, 0);
     
-    // Extruimos con depth = altura del ala (24m)
+    const extrudeSettings = { steps: 1, depth: wing.height, bevelEnabled: false };
+    const flapGeo = new THREE.ExtrudeGeometry(flapShape, extrudeSettings);
+    flapMesh = new THREE.Mesh(flapGeo, wingMaterial);
+    flapMesh.rotation.x = Math.PI / 2;
+    flapMesh.position.set(0, wing.height, wing.mastLength);
+    flapMesh.castShadow = true;
+    mastGroup.add(flapMesh);
+}
+
+function createJib() {
+    const jibMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0xffffff, 
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.9
+    });
+    
+    const jibShape = new THREE.Shape();
+    jibShape.moveTo(0, 0);       
+    jibShape.lineTo(-5, 0);      
+    jibShape.lineTo(0, 15);      
+    jibShape.lineTo(0, 0);       
+    
     const extrudeSettings = {
         steps: 1,
-        depth: wing.height,
+        depth: 0.3,
         bevelEnabled: false
     };
     
-    const flapGeo = new THREE.ExtrudeGeometry(flapShape, extrudeSettings);
-    flapMesh = new THREE.Mesh(flapGeo, wingMaterial);
+    const jibGeo = new THREE.ExtrudeGeometry(jibShape, extrudeSettings);
+    jibMesh = new THREE.Mesh(jibGeo, jibMaterial);
+    jibMesh.rotation.y = -Math.PI / 2;
+    jibMesh.position.set(0, 2.5, -1.84);
+    jibMesh.castShadow = true;
     
-    // Rotación: Math.PI/2 para que la extrusión (Z) vaya en dirección Y mundial
-    flapMesh.rotation.x = Math.PI / 2;
-    
-    // Posición: 
-    // - Y = wing.height (para que el flap quede al mismo nivel que el mástil)
-    // - Z = wing.mastLength (para que empiece en el borde de popa del mástil)
-    flapMesh.position.set(0, wing.height, wing.mastLength);
-    
-    flapMesh.castShadow = true;
-    mastGroup.add(flapMesh);
+    boatGroup.add(jibMesh);
+    jibMesh.visible = CONFIG.jibActive;
+}
 
-    // --- FOILS ---
+function createFoils() {
     const foilMaterial = new THREE.MeshPhongMaterial({ color: 0x34495e });
-    const foilGeo = new THREE.BoxGeometry(0.5, 8, 0.5);
+    const rearFoilHeight = 4;
+    const aleronSpan = rearFoilHeight * (2 / 3); 
     
-    foils.port = new THREE.Mesh(foilGeo, foilMaterial);
-    foils.port.position.set(-8, -2, 2);
-    boatGroup.add(foils.port);
+    function createFoilWithAleron(height) {
+        const foilGroup = new THREE.Group();
+        
+        const bladeWidth = 0.08;
+        const bladeLength = 1.2;
+        const bladeGeo = new THREE.BoxGeometry(bladeWidth, height, bladeLength);
+        const blade = new THREE.Mesh(bladeGeo, foilMaterial);
+        blade.position.y = height / 2; 
+        blade.castShadow = true;
+        foilGroup.add(blade);
+        
+        const aleronThickness = 0.08;
+        const aleronChord = 0.8;
+        const aleronGeo = new THREE.BoxGeometry(aleronSpan, aleronThickness, aleronChord);
+        const aleron = new THREE.Mesh(aleronGeo, foilMaterial);
+        aleron.position.y = 0; 
+        aleron.castShadow = true;
+        foilGroup.add(aleron);
+        
+        return foilGroup;
+    }
+    
+    foils.frontPort = createFoilWithAleron(5);
+    foils.frontPort.position.set(-3.1, -1.8, 0);
+    boatGroup.add(foils.frontPort);
 
-    foils.starboard = new THREE.Mesh(foilGeo, foilMaterial);
-    foils.starboard.position.set(8, -2, 2);
-    boatGroup.add(foils.starboard);
+    foils.frontStarboard = createFoilWithAleron(5);
+    foils.frontStarboard.position.set(3.1, -1.8, 0);
+    boatGroup.add(foils.frontStarboard);
 
-    // --- TRIPULACIÓN con GLOW ---
+    foils.rearPort = createFoilWithAleron(rearFoilHeight);
+    foils.rearPort.position.set(-3.1, -1.8, 6);
+    boatGroup.add(foils.rearPort);
+
+    foils.rearStarboard = createFoilWithAleron(rearFoilHeight);
+    foils.rearStarboard.position.set(3.1, -1.8, 6);
+    boatGroup.add(foils.rearStarboard);
+}
+
+function createCrew() {
     const crewColors = {
         helmsman: 0xe74c3c,
         trimmer: 0xf39c12,
@@ -183,33 +285,119 @@ function createBoat() {
 function update3DScene() {
     if (!boatGroup) return;
 
-    // 1. Rotación del barco (Rumbo)
     boatGroup.rotation.y = degToRad(CONFIG.boatHeading);
-
-    // 2. Escora
     boatGroup.rotation.z = degToRad(CONFIG.heelAngle);
 
-    // 3. Altura de los foils
-    const foilY = -2 + (CONFIG.foilHeight * 4); 
-    foils.port.position.y = foilY;
-    foils.starboard.position.y = foilY;
-    boatGroup.position.y = CONFIG.foilHeight * 2;
+    const foilBaseY = -1.8;
+    const foilLift = CONFIG.foilHeight * 4; 
+    
+    foils.frontPort.position.y = foilBaseY + foilLift;
+    foils.frontStarboard.position.y = foilBaseY + foilLift;
+    
+    foils.rearPort.position.y = foilBaseY; 
+    foils.rearStarboard.position.y = foilBaseY;
 
-    // 4. Rotación del Mástil
+    boatGroup.position.y = -2 + (CONFIG.foilHeight * 2);
+
     mastGroup.rotation.y = degToRad(CONFIG.sailTrim);
+    flapMesh.rotation.z = degToRad(CONFIG.flapAngle);
 
-    // 5. Rotación del Flap (relativo al mástil)
-    flapMesh.rotation.z = degToRad(CONFIG.flapAngle); // Rotación sobre eje Z ahora
+    if (jibMesh && CONFIG.jibActive) {
+        jibMesh.visible = true;
+        
+        let windSide = 1;
+        if (CONFIG.sailTrim < -5) {
+            windSide = -1;
+        }
+        
+        jibMesh.scale.z = -windSide;
+        const curveAngle = 0.05; 
+        jibMesh.rotation.y = -Math.PI / 2 + (windSide * curveAngle);
+        
+    } else if (jibMesh) {
+        jibMesh.visible = false;
+    }
 
-    // 6. Actualizar tripulación y glows
+    // Actualizar agua
+    if (water) {
+        water.material.uniforms['time'].value += 1.0 / 60.0;
+    }
+
+    // Actualizar estela
+    updateWake();
+
     updateCrewPositions();
-
-    // 7. Actualizar cámara según joystick derecho
     updateCamera();
 }
 
+function updateWake() {
+    const boatSpeed = Math.abs(CONFIG.boatSpeed);
+    
+    if (boatSpeed > 0.3) {
+        const heading = degToRad(CONFIG.boatHeading);
+        const cosH = Math.cos(heading);
+        const sinH = Math.sin(heading);
+        
+        // Posición mundial del centro del barco
+        const boatX = boatGroup.position.x;
+        const boatZ = boatGroup.position.z;
+        
+        // Coordenadas LOCALES de los foils traseros en el barco:
+        // Foil babor: X=-3.1, Z=6 (Z positivo = popa)
+        // Foil estribor: X=3.1, Z=6
+        const localPort = { x: -3.1, z: 6 };
+        const localStarboard = { x: 3.1, z: 6 };
+        
+        // Transformación correcta de coordenadas locales a mundiales
+        // worldX = localX * cos(θ) + localZ * sin(θ) + boatX
+        // worldZ = -localX * sin(θ) + localZ * cos(θ) + boatZ
+        const rearPortX = localPort.x * cosH + localPort.z * sinH + boatX;
+        const rearPortZ = -localPort.x * sinH + localPort.z * cosH + boatZ;
+        
+        const rearStarboardX = localStarboard.x * cosH + localStarboard.z * sinH + boatX;
+        const rearStarboardZ = -localStarboard.x * sinH + localStarboard.z * cosH + boatZ;
+        
+        // Generar 2 partículas por frame (una por cada foil trasero)
+        for (let i = 0; i < 2; i++) {
+            const particle = wakeParticles.find(p => p.life <= 0);
+            
+            if (particle) {
+                const posX = (i === 0) ? rearPortX : rearStarboardX;
+                const posZ = (i === 0) ? rearPortZ : rearStarboardZ;
+                
+                // Pequeña variación aleatoria para naturalidad
+                const randomOffset = (Math.random() - 0.5) * 0.5;
+                
+                particle.mesh.position.set(
+                    posX + randomOffset,
+                    0.1,
+                    posZ + randomOffset
+                );
+                particle.mesh.visible = true;
+                particle.life = particle.maxLife;
+                particle.mesh.material.opacity = 0.6;
+                particle.mesh.scale.set(1, 1, 1);
+            }
+        }
+    }
+    
+    // Actualizar todas las partículas (se quedan fijas en el agua)
+    wakeParticles.forEach(p => {
+        if (p.life > 0) {
+            p.life--;
+            const lifeRatio = p.life / p.maxLife;
+            p.mesh.material.opacity = lifeRatio * 0.6;
+            p.mesh.scale.multiplyScalar(1.01);
+            
+            if (p.life <= 0) {
+                p.mesh.visible = false;
+            }
+        }
+    });
+}
+
 function updateCrewPositions() {
-    const zPositions = { 1: -6, 2: -2, 3: 2, 4: 6 };
+    const zPositions = { 1: 1.5, 2: 3.0, 3: 4.5, 4: 6.0 }; 
     const activeRole = CrewState.activeRole;
 
     for (const role in CrewState.positions) {
@@ -217,47 +405,38 @@ function updateCrewPositions() {
         const mesh = crewMeshes[role];
         const glow = crewGlows[role];
         
-        const x = pos.hull === 'port' ? -8 : 8;
+        const x = pos.hull === 'port' ? -2.7 : 2.7;
         const z = zPositions[pos.position];
         
-        // Suavizar movimiento
         mesh.position.x += (x - mesh.position.x) * 0.2;
         mesh.position.z += (z - mesh.position.z) * 0.2;
-        mesh.position.y = 3.5;
+        mesh.position.y = 3.0; 
         
-        // Activar/desactivar glow según tripulante activo
         if (role === activeRole) {
-            glow.intensity = 2; // Encendido
+            glow.intensity = 2.5;
         } else {
-            glow.intensity = 0; // Apagado
+            glow.intensity = 0;
         }
     }
 }
 
 function updateCamera() {
-    // Leer input del joystick derecho (si existe)
     const input = typeof getInput === 'function' ? getInput() : { cameraX: 0, cameraY: 0 };
     
-    // Actualizar estado de cámara
-    cameraState.angle += input.cameraX * 0.03; // Rotación horizontal
-    cameraState.distance -= input.cameraY * 0.5; // Zoom (acercar/alejar)
+    cameraState.angle += input.cameraX * 0.05;
+    cameraState.distance -= input.cameraY * 0.8;
+    cameraState.distance = Math.max(10, Math.min(80, cameraState.distance));
     
-    // Limitar distancia
-    cameraState.distance = Math.max(10, Math.min(50, cameraState.distance));
-    
-    // Calcular posición de cámara en coordenadas polares
     const camX = Math.sin(cameraState.angle) * cameraState.distance;
     const camZ = Math.cos(cameraState.angle) * cameraState.distance;
     const camY = cameraState.height;
     
-    // Posición objetivo
     const targetPos = new THREE.Vector3(
         boatGroup.position.x + camX,
         boatGroup.position.y + camY,
         boatGroup.position.z + camZ
     );
     
-    // Interpolación suave
     camera.position.lerp(targetPos, 0.1);
     camera.lookAt(boatGroup.position.x, boatGroup.position.y + 2, boatGroup.position.z);
 }
