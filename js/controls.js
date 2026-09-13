@@ -1,25 +1,32 @@
 // ============================================
 // CATAMARANGP SIMULATOR - MÓDULO DE CONTROLES
-// Etapa 3: Dpad como selector de tripulantes
+// Etapa 3.5.2: Dpad para selección y movimiento entre cascos
 // ============================================
 
 // --- ESTADO DE INPUT ---
 const InputState = {
-    // Dpad (ahora para seleccionar tripulantes)
+    // Dpad (ahora para seleccionar y mover jugadores)
     dpadUp: false,
     dpadDown: false,
     dpadLeft: false,
     dpadRight: false,
     
-    // Joystick (ahora para ejecutar funciones)
-    joystickX: 0,  // -1 a 1
-    joystickY: 0,  // -1 a 1
+    // Joystick WASD (para ejecutar funciones del jugador activo)
+    joystickX: 0,  // -1 a 1 (A/D)
+    joystickY: 0,  // -1 a 1 (W/S)
+    
+    // Toggle del jib (tecla J)
+    toggleJib: false,
     
     // Teclas numéricas para selección directa (PC)
     key1: false,
     key2: false,
     key3: false,
-    key4: false
+    key4: false,  // ← COMA AÑADIDA AQUÍ
+    
+    // Cámara (joystick derecho)
+    cameraX: 0,   // -1 a 1 (órbita horizontal)
+    cameraY: 0    // -1 a 1 (zoom vertical)
 };
 
 // --- DETECCIÓN DE DISPOSITIVO TÁCTIL ---
@@ -28,18 +35,18 @@ const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 
 // --- CONTROLES DE TECLADO ---
 const keys = {};
 
-window.addEventListener('keydown', (e) => {
-    keys[e.key] = true;
+window.addEventListener('keydown', (e) => { 
+    keys[e.key] = true; 
     updateInputFromKeys();
 });
 
-window.addEventListener('keyup', (e) => {
-    keys[e.key] = false;
+window.addEventListener('keyup', (e) => { 
+    keys[e.key] = false; 
     updateInputFromKeys();
 });
 
 function updateInputFromKeys() {
-    // Flechas del teclado → Dpad
+    // Flechas del teclado → Dpad (selección y movimiento)
     InputState.dpadUp = keys['ArrowUp'] || false;
     InputState.dpadDown = keys['ArrowDown'] || false;
     InputState.dpadLeft = keys['ArrowLeft'] || false;
@@ -50,6 +57,21 @@ function updateInputFromKeys() {
     InputState.key2 = keys['2'] || false;
     InputState.key3 = keys['3'] || false;
     InputState.key4 = keys['4'] || false;
+    
+    // WASD como joystick virtual (ejecutar funciones)
+    let joyX = 0;
+    let joyY = 0;
+    
+    if (keys['a'] || keys['A']) joyX = -1;
+    if (keys['d'] || keys['D']) joyX = 1;
+    if (keys['w'] || keys['W']) joyY = 1;
+    if (keys['s'] || keys['S']) joyY = -1;
+    
+    InputState.joystickX = joyX;
+    InputState.joystickY = joyY;
+    
+    // Tecla J para toggle del jib
+    InputState.toggleJib = keys['j'] || keys['J'] || false;
 }
 
 // --- CONTROLES TÁCTILES ---
@@ -58,6 +80,12 @@ if (isTouchDevice) {
 }
 
 function setupTouchControls() {
+    // Mostrar los controles táctiles solo si es dispositivo táctil
+    const controlsLayer = document.querySelector('.controls-layer');
+    if (controlsLayer) {
+        controlsLayer.style.display = 'flex';
+    }
+    
     const dpadButtons = document.querySelectorAll('.dpad-btn');
     
     dpadButtons.forEach(btn => {
@@ -102,10 +130,17 @@ function setDpadAction(action, isActive) {
     }
 }
 
-// --- JOYSTICK ---
+// --- JOYSTICKS ---
 function setupJoystick() {
-    const joystick = document.querySelector('.joystick');
-    const handle = document.getElementById('joystickHandle');
+    setupSingleJoystick('joystickLeft', 'joystickHandleLeft', 'left');
+    setupSingleJoystick('joystickRight', 'joystickHandleRight', 'right');
+}
+
+function setupSingleJoystick(joystickId, handleId, side) {
+    const joystick = document.getElementById(joystickId);
+    const handle = document.getElementById(handleId);
+    if (!joystick || !handle) return;
+    
     let isDragging = false;
     let startX, startY;
     
@@ -137,8 +172,13 @@ function setupJoystick() {
         handle.style.left = (45 + deltaX) + 'px';
         handle.style.top = (45 + deltaY) + 'px';
         
-        InputState.joystickX = deltaX / maxDistance;
-        InputState.joystickY = -deltaY / maxDistance;
+        if (side === 'left') {
+            InputState.joystickX = deltaX / maxDistance;
+            InputState.joystickY = -deltaY / maxDistance;
+        } else {
+            InputState.cameraX = deltaX / maxDistance;
+            InputState.cameraY = -deltaY / maxDistance;
+        }
     });
     
     window.addEventListener('touchend', (e) => {
@@ -149,8 +189,13 @@ function setupJoystick() {
         handle.style.left = '45px';
         handle.style.top = '45px';
         
-        InputState.joystickX = 0;
-        InputState.joystickY = 0;
+        if (side === 'left') {
+            InputState.joystickX = 0;
+            InputState.joystickY = 0;
+        } else {
+            InputState.cameraX = 0;
+            InputState.cameraY = 0;
+        }
     });
 }
 
@@ -163,9 +208,12 @@ function getInput() {
         dpadRight: InputState.dpadRight,
         joystickX: InputState.joystickX,
         joystickY: InputState.joystickY,
+        toggleJib: InputState.toggleJib,
         key1: InputState.key1,
         key2: InputState.key2,
         key3: InputState.key3,
-        key4: InputState.key4
+        key4: InputState.key4,  // ← COMA AÑADIDA AQUÍ
+        cameraX: InputState.cameraX,
+        cameraY: InputState.cameraY
     };
 }

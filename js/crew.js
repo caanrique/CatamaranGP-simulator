@@ -1,33 +1,39 @@
 // ============================================
 // CATAMARANGP SIMULATOR - MÓDULO DE TRIPULACIÓN
-// Etapa 3: 4 roles con funciones específicas
+// Etapa 3.5: Reestructuración con cascos y roles actualizados
 // ============================================
 
 // --- DEFINICIÓN DE ROLES ---
 const CREW_ROLES = {
-    HELMSMAN: 'helmsman',           // Timonel
-    WING_TRIMMER: 'wing_trimmer',   // Ajustador de ala
-    GRINDER_1: 'grinder_1',         // Grinder lado babor
-    GRINDER_2: 'grinder_2'          // Grinder lado estribor
+    HELMSMAN: 'helmsman',       // Timonel: controla rumbo
+    TRIMMER: 'trimmer',         // Trimmer: controla foils + toggle jib
+    GRINDER_1: 'grinder_1',     // Grinder 1: ángulo Leading Edge
+    GRINDER_2: 'grinder_2'      // Grinder 2: ángulo Flap trasero
+};
+
+// --- DEFINICIÓN DE CASCOS ---
+const HULLS = {
+    PORT: 'port',           // Babor (izquierdo)
+    STARBOARD: 'starboard'  // Estribor (derecho)
 };
 
 // --- ESTADO DE LA TRIPULACIÓN ---
 const CrewState = {
     activeRole: CREW_ROLES.HELMSMAN,  // Rol actualmente seleccionado
     
-    // Posiciones de los tripulantes en el barco (para visualización)
-    // -1 = babor (izquierda), 0 = centro, +1 = estribor (derecha)
+    // Cada jugador tiene una posición única (hull + position)
+    // position: 1 (proa) a 4 (popa)
     positions: {
-        helmsman: 0,        // Siempre en el centro (popa)
-        wing_trimmer: 0,    // Centro (cerca del mástil)
-        grinder_1: -1,      // Lado babor
-        grinder_2: 1        // Lado estribor
+        helmsman: { hull: HULLS.STARBOARD, position: 4 },
+        trimmer: { hull: HULLS.STARBOARD, position: 3 },
+        grinder_1: { hull: HULLS.PORT, position: 1 },
+        grinder_2: { hull: HULLS.PORT, position: 2 }
     },
     
     // Peso de cada tripulante en kg
     weights: {
         helmsman: 85,
-        wing_trimmer: 80,
+        trimmer: 80,
         grinder_1: 90,
         grinder_2: 88
     },
@@ -35,47 +41,48 @@ const CrewState = {
     // Resistencia/fatiga (0 = fresco, 100 = agotado)
     fatigue: {
         helmsman: 0,
-        wing_trimmer: 0,
+        trimmer: 0,
         grinder_1: 0,
         grinder_2: 0
     }
 };
 
-// --- COLORES DE CADA ROL (para visualización) ---
+// --- COLORES DE CADA ROL ---
 const CREW_COLORS = {
     helmsman: '#e74c3c',       // Rojo
-    wing_trimmer: '#f39c12',   // Naranja
+    trimmer: '#f39c12',        // Naranja
     grinder_1: '#3498db',      // Azul
     grinder_2: '#9b59b6'       // Púrpura
 };
 
-// --- NOMBRES DE CADA ROL (para HUD) ---
+// --- NOMBRES DE CADA ROL ---
 const CREW_NAMES = {
     helmsman: 'Timonel',
-    wing_trimmer: 'Wing Trimmer',
-    grinder_1: 'Grinder 1 (Babor)',
-    grinder_2: 'Grinder 2 (Estribor)'
+    trimmer: 'Trimmer',
+    grinder_1: 'Grinder 1 (Mástil)',
+    grinder_2: 'Grinder 2 (Flap)'
 };
 
-// --- DESCRIPCIÓN DE FUNCIÓN DE CADA ROL (para HUD) ---
+// --- DESCRIPCIÓN DE FUNCIÓN DE CADA ROL ---
 const CREW_FUNCTIONS = {
-    helmsman: 'Controla el rumbo',
-    wing_trimmer: 'Ajusta el ángulo del ala',
-    grinder_1: 'Mueve peso a babor',
-    grinder_2: 'Mueve peso a estribor'
+    helmsman: 'Controla el rumbo (A/D)',
+    trimmer: 'Controla foils (W/S) + Jib (J)',
+    grinder_1: 'Ángulo mástil (A/D)',
+    grinder_2: 'Ángulo flap (A/D)'
 };
 
 // --- FUNCIONES DE CONTROL ---
 
 /**
- * Cambia al siguiente rol (rotación cíclica)
+ * Cambia al siguiente rol (rotación cíclica con ↑/↓)
+ * Orden: 1=Timonel, 2=Trimmer, 3=Grinder2, 4=Grinder1
  */
 function nextRole() {
     const roles = [
         CREW_ROLES.HELMSMAN,
-        CREW_ROLES.WING_TRIMMER,
-        CREW_ROLES.GRINDER_1,
-        CREW_ROLES.GRINDER_2
+        CREW_ROLES.TRIMMER,
+        CREW_ROLES.GRINDER_2,
+        CREW_ROLES.GRINDER_1
     ];
     const currentIndex = roles.indexOf(CrewState.activeRole);
     const nextIndex = (currentIndex + 1) % roles.length;
@@ -84,14 +91,15 @@ function nextRole() {
 }
 
 /**
- * Cambia al rol anterior (rotación cíclica)
+ * Cambia al rol anterior (rotación cíclica con ↑/↓)
+ * Orden: 1=Timonel, 2=Trimmer, 3=Grinder2, 4=Grinder1
  */
 function prevRole() {
     const roles = [
         CREW_ROLES.HELMSMAN,
-        CREW_ROLES.WING_TRIMMER,
-        CREW_ROLES.GRINDER_1,
-        CREW_ROLES.GRINDER_2
+        CREW_ROLES.TRIMMER,
+        CREW_ROLES.GRINDER_2,
+        CREW_ROLES.GRINDER_1
     ];
     const currentIndex = roles.indexOf(CrewState.activeRole);
     const prevIndex = (currentIndex - 1 + roles.length) % roles.length;
@@ -100,51 +108,53 @@ function prevRole() {
 }
 
 /**
- * Ejecuta la acción del tripulante activo según la dirección del joystick
- * @param {number} x - Dirección X del joystick (-1 a 1)
- * @param {number} y - Dirección Y del joystick (-1 a 1)
+ * Mueve al jugador activo al casco opuesto (con ←/→)
  */
-function executeCrewAction(x, y) {
+function moveActivePlayerToOppositeHull() {
     const role = CrewState.activeRole;
-    const threshold = 0.3; // Umbral mínimo para activar
+    const currentHull = CrewState.positions[role].hull;
+    const newHull = (currentHull === HULLS.PORT) ? HULLS.STARBOARD : HULLS.PORT;
     
-    switch(role) {
-        case CREW_ROLES.HELMSMAN:
-            // Timonel: controla el rumbo
-            if (Math.abs(x) > threshold) {
-                const turnSpeed = 2 * Math.abs(x); // Velocidad proporcional
-                CONFIG.boatHeading = normalizeAngle(
-                    CONFIG.boatHeading + (x > 0 ? turnSpeed : -turnSpeed)
-                );
-            }
-            break;
-            
-        case CREW_ROLES.WING_TRIMMER:
-            // Wing Trimmer: ajusta el ángulo del ala
-            if (Math.abs(y) > threshold) {
-                const trimSpeed = 2 * Math.abs(y);
-                CONFIG.sailTrim = Math.max(-90, Math.min(90, 
-                    CONFIG.sailTrim + (y > 0 ? trimSpeed : -trimSpeed)
-                ));
-            }
-            break;
-            
-        case CREW_ROLES.GRINDER_1:
-            // Grinder 1: controla peso en babor
-            if (Math.abs(y) > threshold) {
-                // Aquí implementaremos el movimiento de peso en Etapa 4
-                // Por ahora, solo registramos la acción
-                console.log(`Grinder 1 ajustando peso babor: ${y > 0 ? '+' : '-'}${Math.abs(y).toFixed(2)}`);
-            }
-            break;
-            
-        case CREW_ROLES.GRINDER_2:
-            // Grinder 2: controla peso en estribor
-            if (Math.abs(y) > threshold) {
-                console.log(`Grinder 2 ajustando peso estribor: ${y > 0 ? '+' : '-'}${Math.abs(y).toFixed(2)}`);
-            }
-            break;
+    CrewState.positions[role].hull = newHull;
+    console.log(`${CREW_NAMES[role]} movido a ${newHull === HULLS.PORT ? 'Babor' : 'Estribor'}`);
+}
+
+/**
+ * Obtiene la lista de jugadores en un casco específico
+ * @param {string} hull - HULLS.PORT o HULLS.STARBOARD
+ * @returns {Array} Lista de roles en ese casco
+ */
+function getPlayersInHull(hull) {
+    const players = [];
+    for (const role in CrewState.positions) {
+        if (CrewState.positions[role].hull === hull) {
+            players.push({
+                role: role,
+                position: CrewState.positions[role].position,
+                weight: CrewState.weights[role]
+            });
+        }
     }
+    // Ordenar por posición (1 = proa, 4 = popa)
+    return players.sort((a, b) => a.position - b.position);
+}
+
+/**
+ * Calcula el peso total en cada casco
+ * @returns {Object} { port: peso, starboard: peso }
+ */
+function calculateWeightDistribution() {
+    const portPlayers = getPlayersInHull(HULLS.PORT);
+    const starboardPlayers = getPlayersInHull(HULLS.STARBOARD);
+    
+    const portWeight = portPlayers.reduce((sum, p) => sum + p.weight, 0);
+    const starboardWeight = starboardPlayers.reduce((sum, p) => sum + p.weight, 0);
+    
+    return {
+        port: portWeight,
+        starboard: starboardWeight,
+        difference: Math.abs(portWeight - starboardWeight)
+    };
 }
 
 /**
@@ -154,14 +164,15 @@ function executeCrewAction(x, y) {
 function calculateRightingMoment() {
     let moment = 0;
     
-    // Por ahora solo considera el peso de los tripulantes
-    // En Etapa 4 añadiremos la posición dinámica
+    // Cada jugador contribuye según su peso y distancia al centro
+    // Distancia aproximada: 1 metro por unidad de posición lateral
     for (const role in CrewState.positions) {
-        const position = CrewState.positions[role];
+        const hull = CrewState.positions[role].hull;
         const weight = CrewState.weights[role];
-        // position: -1 (babor), 0 (centro), +1 (estribor)
-        // Distancia aproximada al centro: 1 metro por unidad
-        moment += weight * position * 1;
+        
+        // hull: PORT = -1 (babor), STARBOARD = +1 (estribor)
+        const lateralPosition = (hull === HULLS.PORT) ? -1 : 1;
+        moment += weight * lateralPosition * 1; // 1 metro de distancia
     }
     
     return moment;
@@ -177,8 +188,9 @@ function getActiveCrewInfo() {
         name: CREW_NAMES[role],
         function: CREW_FUNCTIONS[role],
         color: CREW_COLORS[role],
+        hull: CrewState.positions[role].hull,
+        position: CrewState.positions[role].position,
         weight: CrewState.weights[role],
-        position: CrewState.positions[role],
         fatigue: CrewState.fatigue[role]
     };
 }
