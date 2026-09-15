@@ -10,6 +10,7 @@ let foils = { frontPort: null, frontStarboard: null, rearPort: null, rearStarboa
 let crewMeshes = {};
 let crewGlows = {};
 let water, wakeParticles = [];
+let sky, sun;
 
 let cameraState = {
     distance: 25,
@@ -50,6 +51,9 @@ function init3D() {
 
     // AGUA REALISTA con Water.js
     createRealisticWater();
+
+    // CIELO DINÁMICO con Sky.js
+    createDynamicSky();
     
     // SISTEMA DE ESTELA
     createWakeSystem();
@@ -82,25 +86,74 @@ function createRealisticWater() {
     scene.add(water);
 }
 
+function createDynamicSky() {
+    // Crear el cielo usando Sky.js
+    sky = new THREE.Sky();
+    sky.scale.setScalar(450000);
+    scene.add(sky);
+    
+    // Crear el sol (punto de luz)
+    sun = new THREE.Vector3();
+    
+    // Configuración del cielo
+    const skyUniforms = sky.material.uniforms;
+    skyUniforms['turbidity'].value = 10;      // Turbidez atmosférica
+    skyUniforms['rayleigh'].value = 2;        // Dispersión de Rayleigh
+    skyUniforms['mieCoefficient'].value = 0.005;  // Dispersión de Mie
+    skyUniforms['mieDirectionalG'].value = 0.8;   // Direccionalidad de Mie
+    
+    // Posición inicial del sol (mediodía)
+    const phi = THREE.MathUtils.degToRad(90 - 30); // Elevación: 30° sobre el horizonte
+    const theta = THREE.MathUtils.degToRad(180);    // Azimut: sur
+    
+    sun.setFromSphericalCoords(1, phi, theta);
+    skyUniforms['sunPosition'].value.copy(sun);
+    
+    // Sincronizar la luz direccional con el sol
+    const dirLight = scene.children.find(obj => obj instanceof THREE.DirectionalLight);
+    if (dirLight) {
+        dirLight.position.copy(sun).multiplyScalar(100);
+    }
+}
+
 function createWakeSystem() {
-    // Crear 80 partículas de espuma (más cantidad para línea continua)
-    const particleGeo = new THREE.PlaneGeometry(2, 2);
+    // Crear textura de espuma procedural (gradiente radial)
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    
+    // Gradiente radial: blanco en el centro, transparente en los bordes
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
+    gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.3)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+    
+    const foamTexture = new THREE.CanvasTexture(canvas);
+    
+    // Crear 80 partículas con la textura de espuma
+    const particleGeo = new THREE.PlaneGeometry(3, 3); // Más grandes
     const particleMat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
+        map: foamTexture,
         transparent: true,
-        opacity: 0.6,
-        side: THREE.DoubleSide
+        opacity: 0.7,
+        side: THREE.DoubleSide,
+        depthWrite: false // Evita que las partículas se "peleen" entre sí
     });
     
     for (let i = 0; i < 80; i++) {
         const particle = new THREE.Mesh(particleGeo, particleMat.clone());
         particle.visible = false;
         particle.rotation.x = -Math.PI / 2;
-        scene.add(particle); // Se añaden a la ESCENA, no al barco
+        scene.add(particle);
         wakeParticles.push({
             mesh: particle,
             life: 0,
-            maxLife: 150 // 2.5 segundos de duración
+            maxLife: 180 // 3 segundos de duración
         });
     }
 }
@@ -288,16 +341,50 @@ function update3DScene() {
     boatGroup.rotation.y = degToRad(CONFIG.boatHeading);
     boatGroup.rotation.z = degToRad(CONFIG.heelAngle);
 
+        // 3. FOILS INTELIGENTES: Solo sotavento sumergido (excepto en maniobras)
     const foilBaseY = -1.8;
-    const foilLift = CONFIG.foilHeight * 4; 
+    const foilLift = CONFIG.foilHeight * 1.2;
     
-    foils.frontPort.position.y = foilBaseY + foilLift;
-    foils.frontStarboard.position.y = foilBaseY + foilLift;
+    // Determinar el lado de sotavento (lado opuesto al viento)
+    const apparentWind = calculateApparentWind();
+    const isStarboardTack = apparentWind.angle > 0 && apparentWind.angle < 180;
+    // Si el viento viene de estribor, sotavento es babor (y viceversa)
+    const leewardSide = isStarboardTack ? 'port' : 'starboard';
     
-    foils.rearPort.position.y = foilBaseY; 
+    // Durante maniobras, ambos foils sumergidos para estabilidad
+    const bothFoilsDown = CONFIG.isManeuvering;
+    
+    // Calcular posición de cada foil
+    let portFoilY, starboardFoilY;
+    
+    if (bothFoilsDown || !CONFIG.isFlying) {
+        // Ambos foils sumergidos (maniobra o no está volando)
+        portFoilY = foilBaseY - foilLift;
+        starboardFoilY = foilBaseY - foilLift;
+    } else {
+        // Solo el foil de sotavento sumergido
+        const raisedOffset = 2.5; // Cuánto se levanta el foil de barlovento
+        
+        if (leewardSide === 'port') {
+            portFoilY = foilBaseY - foilLift;           // Sotavento: sumergido
+            starboardFoilY = foilBaseY + raisedOffset;  // Barlovento: elevado
+        } else {
+            portFoilY = foilBaseY + raisedOffset;       // Barlovento: elevado
+            starboardFoilY = foilBaseY - foilLift;      // Sotavento: sumergido
+        }
+    }
+    
+    // Interpolación suave para que los foils no "salten"
+    const foilResponseRate = 0.08;
+    
+    foils.frontPort.position.y += (portFoilY - foils.frontPort.position.y) * foilResponseRate;
+    foils.frontStarboard.position.y += (starboardFoilY - foils.frontStarboard.position.y) * foilResponseRate;
+    
+    // Foils traseros siempre sumergidos (estabilizadores)
+    foils.rearPort.position.y = foilBaseY;
     foils.rearStarboard.position.y = foilBaseY;
 
-    boatGroup.position.y = -2 + (CONFIG.foilHeight * 2);
+    boatGroup.position.y = -2 + (CONFIG.foilHeight * 2.5);
 
     mastGroup.rotation.y = degToRad(CONFIG.sailTrim);
     flapMesh.rotation.z = degToRad(CONFIG.flapAngle);
@@ -338,26 +425,20 @@ function updateWake() {
         const cosH = Math.cos(heading);
         const sinH = Math.sin(heading);
         
-        // Posición mundial del centro del barco
         const boatX = boatGroup.position.x;
         const boatZ = boatGroup.position.z;
         
-        // Coordenadas LOCALES de los foils traseros en el barco:
-        // Foil babor: X=-3.1, Z=6 (Z positivo = popa)
-        // Foil estribor: X=3.1, Z=6
+        // Posiciones de los foils traseros
         const localPort = { x: -3.1, z: 6 };
         const localStarboard = { x: 3.1, z: 6 };
         
-        // Transformación correcta de coordenadas locales a mundiales
-        // worldX = localX * cos(θ) + localZ * sin(θ) + boatX
-        // worldZ = -localX * sin(θ) + localZ * cos(θ) + boatZ
         const rearPortX = localPort.x * cosH + localPort.z * sinH + boatX;
         const rearPortZ = -localPort.x * sinH + localPort.z * cosH + boatZ;
         
         const rearStarboardX = localStarboard.x * cosH + localStarboard.z * sinH + boatX;
         const rearStarboardZ = -localStarboard.x * sinH + localStarboard.z * cosH + boatZ;
         
-        // Generar 2 partículas por frame (una por cada foil trasero)
+        // Generar 2 partículas por frame
         for (let i = 0; i < 2; i++) {
             const particle = wakeParticles.find(p => p.life <= 0);
             
@@ -365,29 +446,33 @@ function updateWake() {
                 const posX = (i === 0) ? rearPortX : rearStarboardX;
                 const posZ = (i === 0) ? rearPortZ : rearStarboardZ;
                 
-                // Pequeña variación aleatoria para naturalidad
-                const randomOffset = (Math.random() - 0.5) * 0.5;
+                const randomOffset = (Math.random() - 0.5) * 0.8;
                 
                 particle.mesh.position.set(
                     posX + randomOffset,
-                    0.1,
+                    0.05, // Ligeramente sobre el agua
                     posZ + randomOffset
                 );
                 particle.mesh.visible = true;
                 particle.life = particle.maxLife;
-                particle.mesh.material.opacity = 0.6;
-                particle.mesh.scale.set(1, 1, 1);
+                particle.mesh.material.opacity = 0.7;
+                particle.mesh.scale.set(0.5, 0.5, 0.5); // Empiezan pequeñas
             }
         }
     }
     
-    // Actualizar todas las partículas (se quedan fijas en el agua)
+    // Actualizar todas las partículas
     wakeParticles.forEach(p => {
         if (p.life > 0) {
             p.life--;
             const lifeRatio = p.life / p.maxLife;
-            p.mesh.material.opacity = lifeRatio * 0.6;
-            p.mesh.scale.multiplyScalar(1.01);
+            
+            // Opacidad se desvanece suavemente
+            p.mesh.material.opacity = lifeRatio * 0.7;
+            
+            // Escala crece gradualmente (de 0.5 a 2.0)
+            const scale = 0.5 + (1 - lifeRatio) * 1.5;
+            p.mesh.scale.set(scale, scale, scale);
             
             if (p.life <= 0) {
                 p.mesh.visible = false;
