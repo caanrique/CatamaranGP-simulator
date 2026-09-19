@@ -190,19 +190,67 @@
         }
 
         /* Responsive para móviles */
+        /* ========================================== */
+/* === CORRECCIÓN DE SCROLL PARA MÓVILES === */
+/* ========================================== */
         @media (max-width: 768px) {
+            /* Permitir que el menú completo tenga scroll si es muy alto */
+            .menu-overlay {
+                align-items: flex-start; /* Empieza desde arriba para poder bajar */
+                overflow-y: auto; /* Habilita el desplazamiento vertical */
+                -webkit-overflow-scrolling: touch; /* Scroll suave y natural en iPhone/Android */
+                padding: 40px 10px; /* Margen para que no quede pegado a los bordes */
+            }
+
             .config-layout {
                 flex-direction: column;
-                height: auto;
+                height: auto; /* Elimina la altura fija que cortaba el contenido */
+                width: 100%;
+                max-width: 400px;
             }
+
             .preview-column {
-                order: -1; /* Vista previa arriba en móviles */
+                order: -1; /* La vista previa va primero */
+                margin-bottom: 20px;
             }
+
             #previewCanvas {
                 width: 100%;
+                max-width: 280px; /* Tamaño perfecto para celular */
                 height: auto;
+                aspect-ratio: 1 / 1; /* Mantiene el cuadrado perfecto */
+            }
+
+            .menu-title {
+                font-size: 26px !important; /* Título más compacto */
+                margin-bottom: 5px !important;
+            }
+
+            .menu-subtitle {
+                font-size: 13px !important;
+                margin-bottom: 15px !important;
+            }
+
+            .menu-container {
+                padding: 10px;
+                width: 100%;
+            }
+            
+            .config-panel-inline {
+                padding: 15px;
+            }
+
+            .color-grid {
+                grid-template-columns: 1fr 1fr; /* Mantiene 2 columnas para los colores */
+                gap: 10px;
+            }
+
+            .menu-btn {
+                padding: 15px 20px; /* Botones un poco más fáciles de tocar */
             }
         }
+
+        
     </style>
     
     <!-- Three.js desde CDN -->
