@@ -1,9 +1,11 @@
 // ============================================
 // CATAMARANGP SIMULATOR - MÓDULO DE FÍSICA
-// Versión limpia: Sin duplicados, escora visible y vuelo estable
+// Versión limpia: Con movimiento real en el mapa (X, Z)
 // ============================================
 
 const CONFIG = {
+    boatX: 0,          // Posición horizontal en el mapa
+    boatZ: 0,          // Posición vertical (profundidad) en el mapa
     trueWindSpeed: 20,
     trueWindDirection: 90,
     boatSpeed: 0,
@@ -134,18 +136,20 @@ function getTargetSpeed(vaAngle, vaSpeed) {
     return Math.max(0, Math.min(speed, CONFIG.maxBoatSpeed));
 }
 
-// --- FUNCIÓN DE VELOCIDAD UNIFICADA (SIN DUPLICADOS) ---
+// ==========================================
+// --- FUNCIÓN DE VELOCIDAD Y MOVIMIENTO ---
+// ==========================================
 function updateBoatSpeed() {
     // PRIORIDAD 1: Si está volcado, SOLO animar la recuperación
     if (CONFIG.isCapsized) {
         updateCapsizeAnimation();
-        return CONFIG.boatSpeed; // No hacer nada más
+        return CONFIG.boatSpeed; 
     }
     
     // PRIORIDAD 2: Si está en nosedive, solo animar la recuperación
     if (CONFIG.isNosediving) {
         updateNosedive();
-        return CONFIG.boatSpeed; // No hacer nada más
+        return CONFIG.boatSpeed; 
     }
     
     // Si está bien, calcular física normal
@@ -163,10 +167,31 @@ function updateBoatSpeed() {
     detectManeuver();
     updateManeuver();
     
+    // ACTUALIZAR POSICIÓN DEL BARCO EN EL MAPA (Al final, si el barco se mueve)
+    updateBoatPosition();
+    
     return CONFIG.boatSpeed;
 }
 
-// --- DISTRIBUCIÓN DE PESO (Corregida) ---
+// --- ACTUALIZAR POSICIÓN DEL BARCO EN EL MAPA ---
+function updateBoatPosition() {
+    const speedFactor = CONFIG.boatSpeed * 0.04; 
+    const headingRad = degToRad(CONFIG.boatHeading);
+    
+    // En Three.js: -Z es "adelante" (proa), +X es "derecha" (estribor)
+    CONFIG.boatX += Math.sin(headingRad) * speedFactor;
+    CONFIG.boatZ -= Math.cos(headingRad) * speedFactor;
+    
+    // Actualizar la posición del grupo 3D para que la cámara lo siga
+    if (typeof boatGroup !== 'undefined' && boatGroup) {
+        boatGroup.position.x = CONFIG.boatX;
+        boatGroup.position.z = CONFIG.boatZ;
+    }
+}
+
+// ==========================================
+// --- DISTRIBUCIÓN DE PESO Y ESCORA ---
+// ==========================================
 function calculateWeightDistribution() {
     if (typeof CrewState === 'undefined' || !CrewState.positions) return { port: 170, starboard: 170 };
     let port = 0, starboard = 0;
@@ -177,41 +202,29 @@ function calculateWeightDistribution() {
     return { port, starboard };
 }
 
-// --- ESCORA Y VUELCO (Ajustado a la rigidez real de 2 toneladas y 6m de manga) ---
 function updateHeelAngle() {
     if (CONFIG.isCapsized || CONFIG.isNosediving) return CONFIG.heelAngle;
     
     const aw = calculateApparentWind();
     const wingFactor = CONFIG.wingAreaMultiplier[CONFIG.currentWing];
     
-    // 1. Fuerza del viento: Reducida de 0.08 a 0.05 
-    // (Un barco de 2 toneladas resiste más el empuje lateral)
     const windPush = (aw.speed * aw.speed) * 0.05 * wingFactor;
     const heelingForce = windPush * Math.sin(degToRad(aw.angle));
     
-    // 2. Fuerza de la tripulación: Aumentada de 0.1 a 0.15
-    // (4 personas en el borde de 6 metros de ancho generan una palanca enorme)
     const wd = calculateWeightDistribution();
     const isStarboardWind = aw.angle > 0 && aw.angle < 180;
     const weatherW = isStarboardWind ? wd.starboard : wd.port;
     const leeW = isStarboardWind ? wd.port : wd.starboard;
     const crewRighting = Math.max(0, (weatherW - leeW)) * 0.15;
     
-    // 3. Estabilidad en vuelo
     const flightStability = CONFIG.isFlying ? 0.9 : 1.0;
-    
-    // Fuerza neta
     let netForce = (heelingForce - crewRighting) * flightStability;
-    
-    // 4. FACTOR DE RIGIDEZ (Stiffness): Reducido de 1.0 a 0.6
-    // Esto hace que el barco se sienta pesado y estable, no como una hoja al viento.
     let targetHeel = Math.max(0, netForce * 0.6); 
     
-    // Interpolación: se inclina lento, se endereza rápido
     if (CONFIG.heelAngle < targetHeel) {
-        CONFIG.heelAngle += (targetHeel - CONFIG.heelAngle) * 0.04; // Un poco más lento al inclinarse
+        CONFIG.heelAngle += (targetHeel - CONFIG.heelAngle) * 0.04;
     } else {
-        CONFIG.heelAngle += (targetHeel - CONFIG.heelAngle) * 0.1;  // Se endereza rápido
+        CONFIG.heelAngle += (targetHeel - CONFIG.heelAngle) * 0.1;
     }
     
     if (CONFIG.heelAngle >= CONFIG.maxHeelAngle) triggerCapsize();
@@ -229,17 +242,13 @@ function triggerCapsize() {
 }
 
 function updateCapsizeAnimation() {
-    // Animar la caída visualmente hasta 180 grados
     if (CONFIG.capsizeAnimation < 180) {
         CONFIG.capsizeAnimation += 4; 
         CONFIG.capsizeAnimation = Math.min(180, CONFIG.capsizeAnimation);
     }
     
-    // Contador de 8 segundos (480 frames a 60fps)
     if (CONFIG.capsizeTimer > 0) {
         CONFIG.capsizeTimer--;
-        
-        // Cuando el tiempo se acaba, reiniciamos el estado dinámico
         if (CONFIG.capsizeTimer === 0) {
             CONFIG.isCapsized = false;
             CONFIG.heelAngle = 0;
@@ -252,7 +261,9 @@ function updateCapsizeAnimation() {
     }
 }
 
-// --- VUELO PROGRESIVO POR VELOCIDAD ---
+// ==========================================
+// --- VUELO Y NOSDIVE ---
+// ==========================================
 function updateFlightState() {
     if (CONFIG.isNosediving || CONFIG.isCapsized) return;
     
@@ -262,9 +273,9 @@ function updateFlightState() {
     if (spd < 10) targetFoil = 0;
     else if (spd < 14) targetFoil = ((spd - 10) / 4) * 0.3;
     else if (spd < 18) targetFoil = 0.3 + ((spd - 14) / 4) * 0.5;
-    else { targetFoil = 1.0; shouldFly = true; }
+    else { targetFoil = 1.0; shouldFly = true; } // <-- ¡CORREGIDO! (Se eliminó el "der")
 
-    CONFIG.foilHeight += (targetFoil - CONFIG.foilHeight) * 0.015; // Transición suave
+    CONFIG.foilHeight += (targetFoil - CONFIG.foilHeight) * 0.015;
 
     if (shouldFly && !CONFIG.isFlying) { CONFIG.isFlying = true; console.log('🛩️ ¡DESPEGUE! (' + spd.toFixed(1) + ' nudos)'); }
     else if (!shouldFly && CONFIG.isFlying && CONFIG.foilHeight < 0.1) { CONFIG.isFlying = false; console.log('🌊 El barco volvió al agua'); }
@@ -278,7 +289,7 @@ function updateNosediveRisk() {
     let risk = 0;
     if (CONFIG.foilHeight > 0.9) risk += (CONFIG.foilHeight - 0.9) * 0.02;
     if (CONFIG.boatSpeed > 45) risk += (CONFIG.boatSpeed - 45) * 0.001;
-    if (CONFIG.heelAngle > 15) risk += (CONFIG.heelAngle - 15) * 0.01; // ¡La escora alta es el principal peligro!
+    if (CONFIG.heelAngle > 15) risk += (CONFIG.heelAngle - 15) * 0.01;
     
     CONFIG.nosediveRisk += risk;
     if (risk === 0) CONFIG.nosediveRisk = Math.max(0, CONFIG.nosediveRisk - 0.02);
@@ -301,18 +312,13 @@ function triggerNosedive() {
 function updateNosedive() {
     if (CONFIG.nosediveTimer > 0) {
         CONFIG.nosediveTimer--;
-        
-        // Durante la caída, la velocidad se reduce drásticamente
         CONFIG.boatSpeed *= 0.95; 
         
-        // Cuando pasan los 8 segundos, reiniciamos el estado
         if (CONFIG.nosediveTimer === 0) {
             CONFIG.isNosediving = false;
-            CONFIG.foilHeight = 0;      // Foils completamente abajo
-            CONFIG.boatSpeed = 0;       // Velocidad a cero para arrancar de nuevo
-            CONFIG.nosediveRisk = 0;    // Resetear el medidor de riesgo
-            
-            // NOTA: Al igual que en el vuelco, CONFIG.boatHeading no se modifica.
+            CONFIG.foilHeight = 0;
+            CONFIG.boatSpeed = 0;
+            CONFIG.nosediveRisk = 0;
             console.log('✅ Barco recuperado del nosedive. Listo para navegar.');
         }
     }
@@ -325,6 +331,9 @@ function calculateFoilEfficiency() {
     return 1.0;
 }
 
+// ==========================================
+// --- MANIOBRAS ---
+// ==========================================
 function getWindSide(vaAngle) { return (vaAngle >= 0 && vaAngle <= 180) ? 'starboard' : 'port'; }
 
 function detectManeuver() {
@@ -361,14 +370,22 @@ function updateManeuver() {
     CONFIG.flapAngle += (-CONFIG.flapAngle - CONFIG.flapAngle) * ease;
     
     if (CONFIG.maneuverTimer <= 0) {
-        CONFIG.isManeuvering = false; CONFIG.maneuverType = null; CONFIG.currentManeuverSpeedLoss = 0;
+        CONFIG.isManeuvering = false; 
+        CONFIG.maneuverType = null; 
+        CONFIG.currentManeuverSpeedLoss = 0;
     }
 }
 
+// ==========================================
+// --- CONTROLES Y ESTADO ---
+// ==========================================
 function setWing(type) {
     if (POLAR_TABLES[type]) {
         CONFIG.currentWing = type;
-        if (!POLAR_TABLES[type].jibAllowed && CONFIG.jibActive) { CONFIG.jibActive = false; console.log('Jib desactivado (no permitido)'); }
+        if (!POLAR_TABLES[type].jibAllowed && CONFIG.jibActive) { 
+            CONFIG.jibActive = false; 
+            console.log('Jib desactivado (no permitido)'); 
+        }
     }
 }
 

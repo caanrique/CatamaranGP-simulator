@@ -4,108 +4,204 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CatamaranGP Simulator 3D</title>
+    
     <style>
+        /* ========================================== */
+        /* === ESTILOS BASE Y CANVAS === */
+        /* ========================================== */
         body, html {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background-color: #1a5276;
-            font-family: Arial, sans-serif;
+            margin: 0; padding: 0; overflow: hidden;
+            background-color: #1a5276; font-family: Arial, sans-serif;
             touch-action: none; /* Prevenir zoom en móvil */
         }
         
-        /* Canvas 3D de fondo */
         #canvas3d {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
         }
 
-       /* Canvas 2D superpuesto (solo para HUD, transparente) */
         #gameCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 2;
-            pointer-events: auto !important; /* Fuerza a recibir todos los clics */
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 2; pointer-events: auto !important;
         }
 
-        /* Ocultar controles táctiles por defecto (solo se muestran en móvil) */
+        /* ========================================== */
+        /* === CONTROLES TÁCTILES === */
+        /* ========================================== */
         .controls-layer {
-            display: none;
+            position: absolute; bottom: 20px; width: 100%; z-index: 10;
+            display: none; justify-content: space-between; padding: 0 20px;
+            box-sizing: border-box; pointer-events: auto;
         }
-
-        /* Controles táctiles (por encima de todo) */
-        .controls-layer {
-            position: absolute;
-            bottom: 20px;
-            width: 100%;
-            z-index: 10;
-            display: flex;
-            justify-content: space-between;
-            padding: 0 20px;
-            box-sizing: border-box;
-            pointer-events: auto;
-        }
-
-        .dpad {
-            position: relative;
-            width: 120px;
-            height: 120px;
-        }
-
+        .dpad { position: relative; width: 120px; height: 120px; }
         .dpad-btn {
-            position: absolute;
-            width: 40px;
-            height: 40px;
-            background: rgba(255, 255, 255, 0.2);
-            border: 2px solid rgba(255, 255, 255, 0.5);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 20px;
-            user-select: none;
+            position: absolute; width: 40px; height: 40px;
+            background: rgba(255, 255, 255, 0.2); border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 20px; user-select: none;
         }
-
-        .dpad-btn.active {
-            background: rgba(255, 255, 255, 0.5);
-        }
-
+        .dpad-btn.active { background: rgba(255, 255, 255, 0.5); }
         .dpad-up { top: 0; left: 40px; }
         .dpad-down { bottom: 0; left: 40px; }
         .dpad-left { top: 40px; left: 0; }
         .dpad-right { top: 40px; right: 0; }
 
-        .joysticks-container {
-            display: flex;
-            gap: 20px;
-        }
-
+        .joysticks-container { display: flex; gap: 20px; }
         .joystick {
-            position: relative;
-            width: 100px;
-            height: 100px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
+            position: relative; width: 100px; height: 100px;
+            background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 50%;
+        }
+        .joystick-handle {
+            position: absolute; width: 40px; height: 40px;
+            background: rgba(255, 255, 255, 0.5); border-radius: 50%; top: 30px; left: 30px; pointer-events: none;
         }
 
-        .joystick-handle {
-            position: absolute;
-            width: 40px;
-            height: 40px;
-            background: rgba(255, 255, 255, 0.5);
-            border-radius: 50%;
-            top: 30px;
-            left: 30px;
-            pointer-events: none;
+        /* ========================================== */
+        /* === MENÚS SUPERPUESTOS (PANTALLA 1 Y 2) === */
+        /* ========================================== */
+        .menu-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1000; animation: fadeIn 0.3s ease-in;
+        }
+        .menu-overlay.hidden { display: none; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .menu-container { text-align: center; color: white; max-width: 600px; padding: 40px; }
+        .menu-title { font-size: 48px; font-weight: bold; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); letter-spacing: 3px; }
+        .menu-subtitle { font-size: 18px; margin-bottom: 40px; opacity: 0.9; }
+        .menu-buttons { display: flex; flex-direction: column; gap: 20px; }
+
+        .menu-btn {
+            background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px; padding: 20px 30px; color: white; cursor: pointer;
+            transition: all 0.3s ease; display: flex; align-items: center; gap: 20px; text-align: left;
+        }
+        .menu-btn:hover { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.6); transform: translateX(10px); }
+        .btn-icon { font-size: 36px; min-width: 50px; }
+        .btn-text { font-size: 20px; font-weight: bold; display: block; }
+        .btn-desc { font-size: 14px; opacity: 0.8; display: block; margin-top: 5px; }
+        .menu-btn div { display: flex; flex-direction: column; }
+
+        /* ========================================== */
+        /* === PANEL DE CONFIGURACIÓN EN LÍNEA === */
+        /* ========================================== */
+        .config-panel-inline {
+            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 12px;
+            padding: 25px; margin-bottom: 25px; text-align: left;
+        }
+        .config-group { margin-bottom: 15px; }
+        .config-group label { display: block; font-size: 13px; margin-bottom: 5px; color: #ddd; }
+        .config-group select {
+            width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.1); color: white; font-size: 13px;
+        }
+        .config-group select option { background: #333; color: white; }
+        .checkbox-label { display: flex !important; align-items: center; gap: 10px; cursor: pointer; font-size: 14px !important; color: white !important; }
+        .config-group input[type="color"] {
+            width: 100%; height: 40px; border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 8px; cursor: pointer; background: transparent; padding: 2px;
+        }
+        .color-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .config-divider { border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin: 20px 0; }
+        .config-note { font-size: 11px; color: #aaa; font-style: italic; margin-top: 15px; }
+
+        /* ========================================== */
+        /* === BOTONES ESPECIALES DE NAVEGACIÓN === */
+        /* ========================================== */
+        .primary-btn {
+            background: rgba(46, 204, 113, 0.8); border-color: rgba(46, 204, 113, 1);
+            justify-content: center; font-size: 18px; padding: 15px;
+        }
+        .primary-btn:hover { background: rgba(46, 204, 113, 1); transform: scale(1.02); }
+        .secondary-btn {
+            background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.2);
+            justify-content: center; margin-top: 30px;
+        }
+        .secondary-btn:hover { background: rgba(255, 255, 255, 0.15); transform: translateX(0); }
+
+        /* ========================================== */
+        /* === BOTÓN VOLVER AL MENÚ (DURANTE EL JUEGO) === */
+        /* ========================================== */
+        .back-to-menu-btn {
+            position: fixed; top: 20px; left: 20px;
+            background: rgba(0, 0, 0, 0.6); color: white; border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px; padding: 10px 20px; font-size: 14px; cursor: pointer;
+            z-index: 999; transition: all 0.3s ease; display: none;
+        }
+        .back-to-menu-btn:hover { background: rgba(0, 0, 0, 0.8); border-color: rgba(255, 255, 255, 0.6); }
+        .back-to-menu-btn.visible { display: block; }
+
+        /* ========================================== */
+        /* === LAYOUT DE 2 COLUMNAS PARA CONFIGURACIÓN === */
+        /* ========================================== */
+        .config-layout {
+            display: flex;
+            gap: 30px;
+            max-width: 900px;
+            width: 90%;
+            height: 80vh;
+            padding: 20px;
+        }
+
+        .config-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow-y: auto;
+        }
+
+        .preview-column {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .preview-container {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        .preview-title {
+            color: white;
+            font-size: 20px;
+            margin: 0 0 15px 0;
+        }
+
+        #previewCanvas {
+            background: linear-gradient(to bottom, #87CEEB 0%, #5DADE2 100%);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .preview-note {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+            margin-top: 10px;
+            font-style: italic;
+        }
+
+        /* Responsive para móviles */
+        @media (max-width: 768px) {
+            .config-layout {
+                flex-direction: column;
+                height: auto;
+            }
+            .preview-column {
+                order: -1; /* Vista previa arriba en móviles */
+            }
+            #previewCanvas {
+                width: 100%;
+                height: auto;
+            }
         }
     </style>
     
@@ -120,40 +216,150 @@
     <!-- Canvas 2D solo para el HUD (brújula, textos) -->
     <canvas id="gameCanvas"></canvas>
 
-<!-- Controles táctiles -->
-<div class="controls-layer">
-<div class="dpad">
-    <div class="dpad-btn dpad-up" data-action="sail_up">⬆️</div>
-    <div class="dpad-btn dpad-down" data-action="sail_down">⬇️</div>
-    <div class="dpad-btn dpad-left" data-action="turn_left">⬅️</div>
-    <div class="dpad-btn dpad-right" data-action="turn_right">➡️</div>
-</div>
-    <div class="joysticks-container">
-        <div class="joystick" id="joystickLeft">
-            <div class="joystick-handle" id="joystickHandleLeft"></div>
+    <!-- Controles táctiles -->
+    <div class="controls-layer">
+        <div class="dpad">
+            <div class="dpad-btn dpad-up" data-action="sail_up">⬆️</div>
+            <div class="dpad-btn dpad-down" data-action="sail_down">⬇️</div>
+            <div class="dpad-btn dpad-left" data-action="turn_left">⬅️</div>
+            <div class="dpad-btn dpad-right" data-action="turn_right">➡️</div>
         </div>
-        <div class="joystick" id="joystickRight">
-            <div class="joystick-handle" id="joystickHandleRight"></div>
+        <div class="joysticks-container">
+            <div class="joystick" id="joystickLeft">
+                <div class="joystick-handle" id="joystickHandleLeft"></div>
+            </div>
+            <div class="joystick" id="joystickRight">
+                <div class="joystick-handle" id="joystickHandleRight"></div>
+            </div>
         </div>
     </div>
-</div>
+
+    <!-- ========================================== -->
+    <!-- PANTALLA 1: CONFIGURACIÓN DEL BOTE (Layout de 2 columnas) -->
+    <!-- ========================================== -->
+    <div id="configMenu" class="menu-overlay">
+        <div class="config-layout">
+            <!-- COLUMNA IZQUIERDA: Configuración -->
+            <div class="config-column">
+                <div class="config-panel-inline">
+                    <h1 class="menu-title" style="font-size: 32px; margin-bottom: 5px;">CONFIGURAR</h1>
+                    <p class="menu-subtitle" style="font-size: 14px; margin-bottom: 20px;">Personaliza tu Catamarán F50</p>
+                    
+                    <div class="config-group">
+                        <label>Tamaño del Ala:</label>
+                        <select id="wingSelector" onchange="updateConfigFromUI()">
+                            <option value="light">Ligera (29m) - Vientos 7-12 nudos</option>
+                            <option value="medium" selected>Media (24m) - Vientos 12-20 nudos</option>
+                            <option value="strong">Fuerte (18m) - Vientos 20+ nudos</option>
+                        </select>
+                    </div>
+
+                    <div class="config-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="jibToggle" onchange="updateConfigFromUI()">
+                            Activar Jib (Vela de proa)
+                        </label>
+                    </div>
+
+                    <hr class="config-divider">
+                    <h4>🎨 Colores Personalizados</h4>
+
+                    <div class="color-grid">
+                        <div class="config-group">
+                            <label>Casco:</label>
+                            <input type="color" id="colorHull" value="#e74c3c" oninput="updateBoatColors()">
+                        </div>
+                        <div class="config-group">
+                            <label>Mástil:</label>
+                            <input type="color" id="colorMast" value="#ecf0f1" oninput="updateBoatColors()">
+                        </div>
+                        <div class="config-group">
+                            <label>Flap:</label>
+                            <input type="color" id="colorFlap" value="#e67e22" oninput="updateBoatColors()">
+                        </div>
+                        <div class="config-group">
+                            <label>Jib:</label>
+                            <input type="color" id="colorJib" value="#ff4757" oninput="updateBoatColors()">
+                        </div>
+                    </div>
+                    <p class="config-note">* Los foils permanecen en gris técnico.</p>
+
+                    <button class="menu-btn primary-btn" onclick="showModeMenu()" style="margin-top: 20px;">
+                        <span class="btn-text">Continuar ➡️</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- COLUMNA DERECHA: Vista Previa del Barco -->
+            <div class="preview-column">
+                <div class="preview-container">
+                    <h3 class="preview-title">Vista Previa</h3>
+                    <canvas id="previewCanvas" width="400" height="400"></canvas>
+                    <p class="preview-note">Los cambios se aplican en tiempo real</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- PANTALLA 2: SELECCIÓN DE MODO DE JUEGO -->
+    <!-- ========================================== -->
+    <div id="modeMenu" class="menu-overlay hidden">
+        <div class="menu-container">
+            <h1 class="menu-title">ELIGE TU DESAFÍO</h1>
+            <p class="menu-subtitle">¿Cómo quieres navegar hoy?</p>
+            
+            <div class="menu-buttons">
+                <button class="menu-btn" onclick="startGame('learning')">
+                    <span class="btn-icon">🎓</span>
+                    <div>
+                        <span class="btn-text">Modo Aprendizaje</span>
+                        <span class="btn-desc">Navegación libre, sin presión</span>
+                    </div>
+                </button>
+                
+                <button class="menu-btn" onclick="startGame('practice')">
+                    <span class="btn-icon">🎯</span>
+                    <div>
+                        <span class="btn-text">Modo Práctica</span>
+                        <span class="btn-desc">Pista con boyas y cronómetro</span>
+                    </div>
+                </button>
+                
+                <button class="menu-btn" onclick="startGame('race')">
+                    <span class="btn-icon">🏆</span>
+                    <div>
+                        <span class="btn-text">Modo Carrera</span>
+                        <span class="btn-desc">Compite contra la IA</span>
+                    </div>
+                </button>
+            </div>
+
+            <button class="menu-btn secondary-btn" onclick="showConfigMenu()">
+                <span class="btn-text">⬅️ Volver a Configuración</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- BOTÓN PARA VOLVER AL MENÚ DESDE EL JUEGO -->
+    <button id="backToMenuBtn" class="back-to-menu-btn" onclick="showConfigMenu()">
+        ← Salir al Menú
+    </button>
 
     <!-- Three.js Loaders -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
 
-
-    <!-- Scripts del juego -->
+    <!-- Scripts del juego (ORDEN CRÍTICO) -->
     <script src="js/physics.js"></script>
     <script src="js/controls.js"></script>
     <script src="js/wing-selector.js"></script>
     <script src="js/crew.js"></script>
     <script src="js/audio.js"></script>
-    <!-- Three.js Water Shader -->
+    <!-- Three.js Water & Sky Shader -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Water.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Sky.js"></script>
-    <script src="js/renderer3d.js"></script> <!-- NUEVO: Motor 3D -->
+    <script src="js/renderer3d.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>
-
