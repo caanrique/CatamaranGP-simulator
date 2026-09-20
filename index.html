@@ -25,34 +25,100 @@
         }
 
         /* ========================================== */
-        /* === CONTROLES TÁCTILES === */
+        /* === CONTROLES TÁCTILES (D-pad Izq, Joysticks Der) === */
         /* ========================================== */
         .controls-layer {
-            position: absolute; bottom: 20px; width: 100%; z-index: 10;
-            display: none; justify-content: space-between; padding: 0 20px;
-            box-sizing: border-box; pointer-events: auto;
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            z-index: 10;
+            display: none;
+            justify-content: space-between;
+            padding: 0 20px 30px 20px;
+            box-sizing: border-box;
+            pointer-events: auto;
         }
-        .dpad { position: relative; width: 120px; height: 120px; }
+
+        .controls-left {
+            display: flex;
+            align-items: flex-end;
+        }
+
+        .controls-right {
+            display: flex;
+            align-items: flex-end;
+            gap: 15px;
+        }
+
+        .dpad {
+            position: relative;
+            width: 120px;
+            height: 120px;
+        }
+
         .dpad-btn {
-            position: absolute; width: 40px; height: 40px;
-            background: rgba(255, 255, 255, 0.2); border: 2px solid rgba(255, 255, 255, 0.5);
-            border-radius: 8px; display: flex; align-items: center; justify-content: center;
-            color: white; font-size: 20px; user-select: none;
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            user-select: none;
+            touch-action: none;
         }
-        .dpad-btn.active { background: rgba(255, 255, 255, 0.5); }
+
+        .dpad-btn.active {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
         .dpad-up { top: 0; left: 40px; }
         .dpad-down { bottom: 0; left: 40px; }
         .dpad-left { top: 40px; left: 0; }
         .dpad-right { top: 40px; right: 0; }
 
-        .joysticks-container { display: flex; gap: 20px; }
         .joystick {
-            position: relative; width: 100px; height: 100px;
-            background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 50%;
+            position: relative;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            touch-action: none;
         }
+
         .joystick-handle {
-            position: absolute; width: 40px; height: 40px;
-            background: rgba(255, 255, 255, 0.5); border-radius: 50%; top: 30px; left: 30px; pointer-events: none;
+            position: absolute;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            pointer-events: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+
+        /* JOYSTICK IZQUIERDO (CÁMARA) - PEQUEÑO, más cerca al centro */
+        #joystickLeft {
+            width: 70px;
+            height: 70px;
+        }
+        #joystickLeft .joystick-handle {
+            width: 28px;
+            height: 28px;
+            top: 21px;
+            left: 21px;
+        }
+
+        /* JOYSTICK DERECHO (ACCIONES) - GRANDE, en el borde derecho */
+        #joystickRight {
+            width: 110px;
+            height: 110px;
+        }
+        #joystickRight .joystick-handle {
+            width: 42px;
+            height: 42px;
+            top: 34px;
+            left: 34px;
         }
 
         /* ========================================== */
@@ -298,7 +364,7 @@
 
     <!-- Controles táctiles -->
     <div class="controls-layer">
-        <!-- LADO IZQUIERDO: D-Pad + Joystick de Cámara (Pequeño) -->
+        <!-- LADO IZQUIERDO: Solo D-Pad -->
         <div class="controls-left">
             <div class="dpad">
                 <div class="dpad-btn dpad-up" data-action="sail_up">⬆️</div>
@@ -306,13 +372,13 @@
                 <div class="dpad-btn dpad-left" data-action="turn_left">⬅️</div>
                 <div class="dpad-btn dpad-right" data-action="turn_right">➡️</div>
             </div>
+        </div>
+
+        <!-- LADO DERECHO: Ambos joysticks (Cámara pequeño + Acciones grande) -->
+        <div class="controls-right">
             <div class="joystick" id="joystickLeft">
                 <div class="joystick-handle" id="joystickHandleLeft"></div>
             </div>
-        </div>
-
-        <!-- LADO DERECHO: Joystick de Acciones (Grande) -->
-        <div class="controls-right">
             <div class="joystick" id="joystickRight">
                 <div class="joystick-handle" id="joystickHandleRight"></div>
             </div>

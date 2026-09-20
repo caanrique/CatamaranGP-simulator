@@ -187,25 +187,23 @@ function updateBoatPosition() {
     const speedFactor = CONFIG.boatSpeed * 0.04; 
     const headingRad = degToRad(CONFIG.boatHeading);
     
-    // Calcular nueva posición
-    let newX = CONFIG.boatX + Math.sin(headingRad) * speedFactor;
-    let newZ = CONFIG.boatZ - Math.cos(headingRad) * speedFactor;
+    // SOLO EJE X INVERTIDO (izquierda/derecha), Z se mantiene igual
+    let newX = CONFIG.boatX - Math.sin(headingRad) * speedFactor; // X invertido
+    let newZ = CONFIG.boatZ - Math.cos(headingRad) * speedFactor; // Z normal
     
-    // === LÍMITES DEL CAMPO DE REGATA (4000m x 2000m centrado en 0,0) ===
-    const FIELD_HALF_WIDTH = 2000;  // 4000m / 2
-    const FIELD_HALF_HEIGHT = 1000; // 2000m / 2
-    const MARGIN = 20; // Margen de seguridad (metros antes del borde)
+    // === LÍMITES DEL CAMPO DE REGATA (4000m x 2000m) ===
+    const FIELD_HALF_WIDTH = 2000;
+    const FIELD_HALF_HEIGHT = 1000;
+    const MARGIN = 20;
     
-    // Limitar posición X (este-oeste)
     if (newX > FIELD_HALF_WIDTH - MARGIN) {
         newX = FIELD_HALF_WIDTH - MARGIN;
-        CONFIG.boatSpeed *= 0.5; // Frenar al tocar el límite
+        CONFIG.boatSpeed *= 0.5;
     } else if (newX < -FIELD_HALF_WIDTH + MARGIN) {
         newX = -FIELD_HALF_WIDTH + MARGIN;
         CONFIG.boatSpeed *= 0.5;
     }
     
-    // Limitar posición Z (norte-sur)
     if (newZ > FIELD_HALF_HEIGHT - MARGIN) {
         newZ = FIELD_HALF_HEIGHT - MARGIN;
         CONFIG.boatSpeed *= 0.5;
@@ -214,11 +212,9 @@ function updateBoatPosition() {
         CONFIG.boatSpeed *= 0.5;
     }
     
-    // Aplicar posición
     CONFIG.boatX = newX;
     CONFIG.boatZ = newZ;
     
-    // Actualizar la posición del grupo 3D
     if (typeof boatGroup !== 'undefined' && boatGroup) {
         boatGroup.position.x = CONFIG.boatX;
         boatGroup.position.z = CONFIG.boatZ;
