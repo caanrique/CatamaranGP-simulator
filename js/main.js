@@ -69,10 +69,12 @@ function toggleHUD() {
     if (btn) {
         if (hudVisible) {
             btn.classList.add('active');
-            btn.textContent = '📊 HUD';
+            btn.textContent = '✕'; // Solo una X cuando está activo
+            btn.title = 'Ocultar HUD';
         } else {
             btn.classList.remove('active');
-            btn.textContent = '📊 Oculto';
+            btn.textContent = '📊 Velocímetro'; // Texto cuando está oculto
+            btn.title = 'Mostrar HUD';
         }
     }
     console.log(`📊 HUD ${hudVisible ? 'activado' : 'ocultado'}`);
@@ -579,7 +581,7 @@ function drawMinimap() {
 // === HUD COMPACTO HORIZONTAL (Estilo F50 Dashboard) ===
 function drawCompactHUD() {
     const x = 20;
-    const y = 65;
+    const y = 20;
     const width = 340;
     const height = 70;
     
