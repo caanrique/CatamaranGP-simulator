@@ -5,9 +5,15 @@
 
 const CONFIG = {
     boatX: 0,          // Posición horizontal en el mapa
-    boatZ: 0,          // Posición vertical (profundidad) en el mapa
+    boatZ: 0, 
+    fieldHalfWidth: 2000,   // Mitad del ancho del campo (4000m total)
+    fieldHalfHeight: 1000,  // Mitad del alto del campo (2000m total)         // Posición vertical (profundidad) en el mapa
     trueWindSpeed: 20,
     trueWindDirection: 90,
+    baseWindSpeed: 20,        // <-- AGREGAR: Velocidad base
+    baseWindDirection: 90,    // <-- AGREGAR: Dirección base
+    lastWindShiftTime: 0,     // <-- AGREGAR: Temporizador de cambio
+    windShiftInterval: 10000, // <-- AGREGAR: Cambiar cada 10 segundos (10000 ms)
     boatSpeed: 0,
     boatHeading: 0,
     totalManeuvers: 0,
@@ -151,6 +157,9 @@ function updateBoatSpeed() {
         updateNosedive();
         return CONFIG.boatSpeed; 
     }
+
+        // === ACTUALIZAR VIENTO DINÁMICO ===
+    updateDynamicWind();
     
     // Si está bien, calcular física normal
     const aw = calculateApparentWind();
@@ -178,11 +187,38 @@ function updateBoatPosition() {
     const speedFactor = CONFIG.boatSpeed * 0.04; 
     const headingRad = degToRad(CONFIG.boatHeading);
     
-    // En Three.js: -Z es "adelante" (proa), +X es "derecha" (estribor)
-    CONFIG.boatX += Math.sin(headingRad) * speedFactor;
-    CONFIG.boatZ -= Math.cos(headingRad) * speedFactor;
+    // Calcular nueva posición
+    let newX = CONFIG.boatX + Math.sin(headingRad) * speedFactor;
+    let newZ = CONFIG.boatZ - Math.cos(headingRad) * speedFactor;
     
-    // Actualizar la posición del grupo 3D para que la cámara lo siga
+    // === LÍMITES DEL CAMPO DE REGATA (4000m x 2000m centrado en 0,0) ===
+    const FIELD_HALF_WIDTH = 2000;  // 4000m / 2
+    const FIELD_HALF_HEIGHT = 1000; // 2000m / 2
+    const MARGIN = 20; // Margen de seguridad (metros antes del borde)
+    
+    // Limitar posición X (este-oeste)
+    if (newX > FIELD_HALF_WIDTH - MARGIN) {
+        newX = FIELD_HALF_WIDTH - MARGIN;
+        CONFIG.boatSpeed *= 0.5; // Frenar al tocar el límite
+    } else if (newX < -FIELD_HALF_WIDTH + MARGIN) {
+        newX = -FIELD_HALF_WIDTH + MARGIN;
+        CONFIG.boatSpeed *= 0.5;
+    }
+    
+    // Limitar posición Z (norte-sur)
+    if (newZ > FIELD_HALF_HEIGHT - MARGIN) {
+        newZ = FIELD_HALF_HEIGHT - MARGIN;
+        CONFIG.boatSpeed *= 0.5;
+    } else if (newZ < -FIELD_HALF_HEIGHT + MARGIN) {
+        newZ = -FIELD_HALF_HEIGHT + MARGIN;
+        CONFIG.boatSpeed *= 0.5;
+    }
+    
+    // Aplicar posición
+    CONFIG.boatX = newX;
+    CONFIG.boatZ = newZ;
+    
+    // Actualizar la posición del grupo 3D
     if (typeof boatGroup !== 'undefined' && boatGroup) {
         boatGroup.position.x = CONFIG.boatX;
         boatGroup.position.z = CONFIG.boatZ;
@@ -404,4 +440,24 @@ function getBoatStatus() {
         flapAngle: CONFIG.flapAngle, jibActive: CONFIG.jibActive, foilHeight: CONFIG.foilHeight,
         heelAngle: CONFIG.heelAngle, isFlying: CONFIG.isFlying, apparentWind: calculateApparentWind()
     };
+}
+
+// === SISTEMA DE VIENTO DINÁMICO ===
+function updateDynamicWind() {
+    const now = Date.now();
+    
+    // Si ha pasado el intervalo de tiempo, generamos un nuevo viento
+    if (now - CONFIG.lastWindShiftTime > CONFIG.windShiftInterval) {
+        CONFIG.lastWindShiftTime = now;
+        
+        // 1. Cambio de dirección aleatorio entre -15° y +15° respecto a la base
+        const shift = (Math.random() * 30) - 15;
+        CONFIG.trueWindDirection = normalizeAngle(CONFIG.baseWindDirection + shift);
+        
+        // 2. Cambio de velocidad aleatorio entre -4 y +4 nudos respecto a la base
+        const speedChange = (Math.random() * 8) - 4;
+        CONFIG.trueWindSpeed = Math.max(5, Math.min(35, CONFIG.baseWindSpeed + speedChange));
+        
+        console.log(`🌬️ ¡Cambio de viento! Dirección: ${Math.round(CONFIG.trueWindDirection)}° | Velocidad: ${CONFIG.trueWindSpeed.toFixed(1)} nudos`);
+    }
 }

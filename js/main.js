@@ -19,6 +19,8 @@ let gameState = {
 
 // === SISTEMA DE MENÚ DE 2 PANTALLAS ===
 let currentGameMode = null; // 'learning', 'practice', 'race'
+// === CONTROL DEL HUD ===
+let hudVisible = true; // Por defecto el HUD está visible
 
 function showConfigMenu() {
     const configMenu = document.getElementById('configMenu');
@@ -28,6 +30,9 @@ function showConfigMenu() {
     if (configMenu) configMenu.classList.remove('hidden');
     if (modeMenu) modeMenu.classList.add('hidden');
     if (backBtn) backBtn.classList.remove('visible');
+
+    const hudBtn = document.getElementById('toggleHudBtn');
+    if (hudBtn) hudBtn.classList.remove('visible');
 
      if (typeof clearPracticeTrack === 'function') clearPracticeTrack();
     
@@ -57,6 +62,22 @@ function showModeMenu() {
     console.log('🎮 Pantalla de Modos de Juego mostrada');
 }
 
+// === TOGGLE DEL HUD ===
+function toggleHUD() {
+    hudVisible = !hudVisible;
+    const btn = document.getElementById('toggleHudBtn');
+    if (btn) {
+        if (hudVisible) {
+            btn.classList.add('active');
+            btn.textContent = '📊 HUD';
+        } else {
+            btn.classList.remove('active');
+            btn.textContent = '📊 Oculto';
+        }
+    }
+    console.log(`📊 HUD ${hudVisible ? 'activado' : 'ocultado'}`);
+}
+
 function startGame(mode) {
     currentGameMode = mode;
     
@@ -70,6 +91,12 @@ function startGame(mode) {
         if (typeof createPracticeTrack === 'function') createPracticeTrack();
     }
     if (backBtn) backBtn.classList.add('visible');
+
+    const hudBtn = document.getElementById('toggleHudBtn');
+    if (hudBtn) hudBtn.classList.add('visible');
+    hudVisible = true; // HUD visible al empezar
+    const hudBtn2 = document.getElementById('toggleHudBtn');
+    if (hudBtn2) hudBtn2.classList.add('active');
     
     console.log(`🚀 ¡Juego iniciado en modo: ${mode}!`);
     
@@ -253,14 +280,15 @@ function render() {
     // 2. Limpiar canvas 2D
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // 3. Dibujar HUD
-    const centerX = canvas.width / 2;
-    const centerY = 80;
-    if (typeof drawWindCompass === 'function') drawWindCompass(centerX, centerY);
-    if (typeof drawHUD === 'function') drawHUD();
+    // 3. Dibujar HUD COMPACTO (solo si está visible)
+    if (hudVisible) {
+        if (typeof drawCompactHUD === 'function') drawCompactHUD();
+    }
+    
+    // 4. Efectos especiales (Flash de trasluchada)
     if (typeof drawGybeCrackFlash === 'function') drawGybeCrackFlash();
     
-    // 4. Dibujar Minimapa (SOLO en modo práctica)
+    // 5. Dibujar Minimapa SIEMPRE VISIBLE (en modo práctica)
     if (currentGameMode === 'practice' && typeof drawMinimap === 'function') {
         drawMinimap();
     }
@@ -436,65 +464,232 @@ function drawHUD() {
     ctx.fillText('↑↓ Jugador | ←→ Casco | WASD Acción | J = Jib', canvas.width / 2, canvas.height - 10);
 }
 
-// === MINIMAPA 2D ===
-// === MINIMAPA 2D ===
+// === MINIMAPA 2D CON INDICADORES DE VIENTO ===
 function drawMinimap() {
-    const mapSize = 150;
-    const mapX = canvas.width - mapSize - 20;
-    const mapY = canvas.height - mapSize - 20;
-    const scale = 0.15; // Reduje la escala de 0.4 a 0.15 para que quepan las boyas lejanas en el mapa
+    const mapWidth = 200;
+    const mapHeight = 100;
+    const mapX = canvas.width - mapWidth - 20;
+    const mapY = 60; // ARRIBA en lugar de abajo (dejando espacio para el botón HUD)
     
-    ctx.fillStyle = 'rgba(0, 20, 40, 0.7)';
-    ctx.fillRect(mapX, mapY, mapSize, mapSize);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    const fieldWidth = (typeof CONFIG !== 'undefined' && CONFIG.fieldHalfWidth) ? (CONFIG.fieldHalfWidth * 2) : 4000;
+    const scale = mapWidth / fieldWidth;
+    
+    // Fondo del minimapa
+    ctx.fillStyle = 'rgba(0, 20, 40, 0.75)';
+    ctx.fillRect(mapX, mapY, mapWidth, mapHeight);
+    
+    // Borde del campo de regata
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.lineWidth = 2;
-    ctx.strokeRect(mapX, mapY, mapSize, mapSize);
+    ctx.strokeRect(mapX, mapY, mapWidth, mapHeight);
+    
+    // === INDICADORES DE VIENTO EN LOS BORDES DEL MAPA ===
+    if (typeof CONFIG !== 'undefined') {
+        const windRad = degToRad(CONFIG.trueWindDirection);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(52, 152, 219, 0.9)'; // Azul brillante
+        ctx.fillStyle = 'rgba(52, 152, 219, 0.9)';
+        ctx.lineWidth = 2;
+
+        // Posiciones en los 4 centros de los bordes del minimapa
+        const positions = [
+            { x: mapX + mapWidth / 2, y: mapY },           // Borde superior
+            { x: mapX + mapWidth / 2, y: mapY + mapHeight }, // Borde inferior
+            { x: mapX, y: mapY + mapHeight / 2 },          // Borde izquierdo
+            { x: mapX + mapWidth, y: mapY + mapHeight / 2 }  // Borde derecho
+        ];
+
+        positions.forEach(pos => {
+            ctx.save();
+            ctx.translate(pos.x, pos.y);
+            ctx.rotate(windRad);
+            
+            // Dibujar flecha pequeña de viento
+            ctx.beginPath();
+            ctx.moveTo(0, -10);
+            ctx.lineTo(-5, 5);
+            ctx.lineTo(0, 0); // Muesca de la flecha
+            ctx.lineTo(5, 5);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.restore();
+        });
+        ctx.restore();
+        
+        // Texto de velocidad del viento debajo del minimapa
+        ctx.fillStyle = '#3498db';
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`VIENTO: ${CONFIG.trueWindSpeed.toFixed(1)} kn @ ${Math.round(CONFIG.trueWindDirection)}°`, mapX + mapWidth / 2, mapY + mapHeight + 15);
+    }
+    // =====================================================
     
     ctx.save();
-    ctx.translate(mapX + mapSize / 2, mapY + mapSize / 2);
+    ctx.translate(mapX + mapWidth / 2, mapY + mapHeight / 2);
     
-    // 1. Dibujar boyas usando la variable GLOBAL corregida
+    // 1. Dibujar boyas
     if (typeof window.trackBuoys !== 'undefined' && window.trackBuoys.length > 0) {
         window.trackBuoys.forEach(buoy => {
-            const relX = (buoy.position.x - CONFIG.boatX) * scale;
-            const relZ = (buoy.position.z - CONFIG.boatZ) * scale;
+            const bx = buoy.position.x * scale;
+            const bz = buoy.position.z * scale;
             
-            if (Math.abs(relX) < mapSize/2 && Math.abs(relZ) < mapSize/2) {
-                ctx.fillStyle = '#ffaa00';
-                ctx.beginPath();
-                ctx.arc(relX, relZ, 5, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-            }
+            ctx.fillStyle = '#ffaa00';
+            ctx.beginPath();
+            ctx.arc(bx, bz, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 1;
+            ctx.stroke();
         });
     }
     
     // 2. Dibujar el barco
+    const boatX = (typeof CONFIG !== 'undefined') ? CONFIG.boatX : 0;
+    const boatZ = (typeof CONFIG !== 'undefined') ? CONFIG.boatZ : 0;
+    const boatHeading = (typeof CONFIG !== 'undefined') ? CONFIG.boatHeading : 0;
+
+    const boatMapX = boatX * scale;
+    const boatMapZ = boatZ * scale;
+    
+    ctx.save();
+    ctx.translate(boatMapX, boatMapZ);
+    ctx.rotate(degToRad(boatHeading));
+    
     ctx.fillStyle = '#e74c3c';
     ctx.beginPath();
-    ctx.moveTo(0, -6);
-    ctx.lineTo(-4, 4);
-    ctx.lineTo(4, 4);
+    ctx.moveTo(0, -5);
+    ctx.lineTo(-3, 4);
+    ctx.lineTo(3, 4);
     ctx.closePath();
     ctx.fill();
     
-    // 3. Línea de rumbo
     ctx.strokeStyle = 'white';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    const headingRad = degToRad(CONFIG.boatHeading);
-    ctx.lineTo(Math.sin(headingRad) * 12, -Math.cos(headingRad) * 12);
+    ctx.moveTo(0, -5);
+    ctx.lineTo(0, -12);
+    ctx.stroke();
+    
+    ctx.restore();
+    ctx.restore();
+    
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('CAMPO DE REGATA', mapX + mapWidth / 2, mapY - 5);
+}
+
+// === HUD COMPACTO SUPERIOR IZQUIERDO (Estilo F50) ===
+function drawCompactHUD() {
+    const x = 20;
+    const y = 70; // Debajo del botón de toggle si existe, o en la esquina
+    const width = 160;
+    const height = 130;
+    
+    // Fondo discreto
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, width, height);
+    
+    const appWind = calculateApparentWind();
+    const heel = CONFIG.heelAngle;
+    const heading = Math.round(CONFIG.boatHeading);
+    const speed = CONFIG.boatSpeed;
+    
+    ctx.textAlign = 'center';
+    
+    // 1. Brújula minimalista (arriba)
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText(`HDG: ${heading}°`, x + width / 2, y + 15);
+    
+    // 2. Velocímetro tipo arco (semi-círculo)
+    const gaugeX = x + width / 2;
+    const gaugeY = y + 45;
+    const radius = 30;
+    const maxSpeed = 50; // Escala máxima del velocímetro
+    
+    // Fondo del arco
+    ctx.beginPath();
+    ctx.arc(gaugeX, gaugeY, radius, Math.PI, 0); 
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    
+    // Arco de velocidad
+    const speedRatio = Math.min(speed / maxSpeed, 1);
+    const endAngle = Math.PI + (speedRatio * Math.PI);
+    
+    ctx.beginPath();
+    ctx.arc(gaugeX, gaugeY, radius, Math.PI, endAngle);
+    ctx.strokeStyle = speed > 40 ? '#e74c3c' : (speed > 30 ? '#f39c12' : '#2ecc71');
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    
+    // Texto de velocidad
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText(speed.toFixed(1), gaugeX, gaugeY + 6);
+    ctx.font = '9px Arial';
+    ctx.fillStyle = '#aaa';
+    ctx.fillText('NUDOS', gaugeX, gaugeY + 18);
+    
+    // 3. Esquema del bote y flecha de viento
+    const boatX = x + width / 2;
+    const boatY = y + 100;
+    
+    ctx.save();
+    ctx.translate(boatX, boatY);
+    
+    // Bote (triángulo apuntando hacia arriba)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.beginPath();
+    ctx.moveTo(0, -10);
+    ctx.lineTo(-5, 6);
+    ctx.lineTo(5, 6);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Flecha de viento (gira alrededor del bote)
+    // 0° (proa) = flecha apunta hacia abajo. 90° (estribor) = flecha apunta a la izquierda.
+    const windRad = degToRad(appWind.angle) + Math.PI / 2;
+    ctx.rotate(windRad);
+    
+    ctx.strokeStyle = '#3498db'; // Azul para el viento
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -22); // Punta de la flecha (de donde viene el viento)
+    ctx.lineTo(0, -14); // Línea hacia el bote
+    ctx.moveTo(-3, -19); ctx.lineTo(0, -22); ctx.lineTo(3, -19); // Cabeza de la flecha
     ctx.stroke();
     
     ctx.restore();
     
-    ctx.fillStyle = 'white';
-    ctx.font = 'bold 11px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('RADAR', mapX + mapSize / 2, mapY - 5);
+    // 4. Medidor de escora (barra lateral derecha)
+    const heelX = x + width - 12;
+    const heelY = y + 40;
+    const heelHeight = 50;
+    
+    // Fondo de la barra
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.fillRect(heelX - 2, heelY - heelHeight / 2, 4, heelHeight);
+    
+    // Nivel de escora (crece hacia arriba)
+    const heelRatio = Math.min(heel / 45, 1);
+    const barHeight = heelRatio * (heelHeight / 2);
+    const heelColor = heel > 30 ? '#e74c3c' : (heel > 20 ? '#f39c12' : '#2ecc71');
+    
+    ctx.fillStyle = heelColor;
+    ctx.fillRect(heelX - 2, heelY, 4, -barHeight);
+    
+    // Texto de escora
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 9px Arial';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${Math.round(heel)}°`, heelX - 5, heelY + 3);
 }
 
 function drawGybeCrackFlash() {

@@ -370,11 +370,13 @@ function createPracticeTrack() {
         window.trackBuoys = [];
     }
     
+    // 2. Coordenadas ajustadas para caber perfectamente en el campo de 4000x2000m
+    // (X va de -2000 a 2000, Z va de -1000 a 1000)
     const marks = [
-        { x: 0, z: 0, color: 0xff0000, name: "Línea de Salida" },
-        { x: 0, z: -1200, color: 0xffaa00, name: "Boya Barlovento" },
-        { x: 800, z: 600, color: 0xff0000, name: "Boya Sotavento 1" },
-        { x: -800, z: 600, color: 0xff0000, name: "Boya Sotavento 2" }
+        { x: 0, z: 600, color: 0xff0000, name: "Línea de Salida (Sotavento)" },
+        { x: 0, z: -800, color: 0xffaa00, name: "Boya Barlovento" },
+        { x: 600, z: 600, color: 0xff0000, name: "Boya Sotavento 1" },
+        { x: -600, z: 600, color: 0xff0000, name: "Boya Sotavento 2" }
     ];
 
     const cylinderGeo = new THREE.CylinderGeometry(4, 4, 20, 16);
@@ -392,11 +394,22 @@ function createPracticeTrack() {
         buoy.add(topMesh);
         
         scene.add(buoy);
-        window.trackBuoys.push(buoy); // Usamos la variable global directamente
+        window.trackBuoys.push(buoy);
     });
     
     console.log('🎯 Pista de práctica OLÍMPICA creada con ' + window.trackBuoys.length + ' boyas');
-    console.log('📍 Posición primera boya:', window.trackBuoys[0].position);
+    console.log('📍 Boyas ubicadas dentro de los límites del campo (4000x2000m)');
+}
+
+function clearPracticeTrack() {
+    if (window.trackBuoys && window.trackBuoys.length > 0) {
+        window.trackBuoys.forEach(buoy => {
+            scene.remove(buoy);
+            if (buoy.geometry) buoy.geometry.dispose();
+            if (buoy.material) buoy.material.dispose();
+        });
+        window.trackBuoys = [];
+    }
 }
 
 function clearPracticeTrack() {

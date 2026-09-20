@@ -1,17 +1,17 @@
 // ============================================
 // CATAMARANGP SIMULATOR - MÓDULO DE CONTROLES
-// Etapa 3.5.2: Dpad para selección y movimiento entre cascos
+// Versión final: Joysticks invertidos (Izq=Cámara, Der=Acciones) + Mejoras táctiles
 // ============================================
 
 // --- ESTADO DE INPUT ---
 const InputState = {
-    // Dpad (ahora para seleccionar y mover jugadores)
+    // Dpad (selección y movimiento entre cascos)
     dpadUp: false,
     dpadDown: false,
     dpadLeft: false,
     dpadRight: false,
     
-    // Joystick WASD (para ejecutar funciones del jugador activo)
+    // Joystick derecho (acciones del jugador activo)
     joystickX: 0,  // -1 a 1 (A/D)
     joystickY: 0,  // -1 a 1 (W/S)
     
@@ -22,20 +22,16 @@ const InputState = {
     key1: false,
     key2: false,
     key3: false,
-    key4: false,  // ← COMA AÑADIDA AQUÍ
+    key4: false,
     
-    // Cámara (joystick derecho)
-    cameraX: 0,   // -1 a 1 (órbita horizontal)
+    // Joystick izquierdo (Cámara)
+    cameraX: 0,    // -1 a 1 (órbita horizontal)
     cameraY: 0,    // -1 a 1 (zoom vertical)
-
-        // Cámara (joystick derecho + mouse)
-    cameraX: 0,
-    cameraY: 0,
     
-    // NUEVO: Control de cámara por mouse
-    cameraOrbitX: 0,   // Rotación horizontal acumulada
-    cameraOrbitY: 0,   // Rotación vertical acumulada (opcional)
-    cameraZoom: 0,     // Zoom acumulado
+    // Control de cámara por mouse (PC)
+    cameraOrbitX: 0,
+    cameraOrbitY: 0,
+    cameraZoom: 0,
     mouseDragging: false
 };
 
@@ -56,12 +52,10 @@ window.addEventListener('keyup', (e) => {
 });
 
 function updateInputFromKeys() {
-    // Detectar si Shift está presionado
     const shiftPressed = keys['Shift'] || false;
     
     // Si Shift está presionado, las flechas controlan la CÁMARA
     if (shiftPressed) {
-        // Cámara: flechas controlan orbitación y zoom
         InputState.dpadUp = false;
         InputState.dpadDown = false;
         InputState.dpadLeft = false;
@@ -70,33 +64,32 @@ function updateInputFromKeys() {
         let camX = 0;
         let camY = 0;
         
-        if (keys['ArrowLeft']) camX = -1;   // Orbitar izquierda
-        if (keys['ArrowRight']) camX = 1;   // Orbitar derecha
-        if (keys['ArrowUp']) camY = -1;     // Zoom in (acercar)
-        if (keys['ArrowDown']) camY = 1;    // Zoom out (alejar)
+        if (keys['ArrowLeft']) camX = -1;
+        if (keys['ArrowRight']) camX = 1;
+        if (keys['ArrowUp']) camY = -1;
+        if (keys['ArrowDown']) camY = 1;
         
         InputState.cameraX = camX;
         InputState.cameraY = camY;
     } 
-    // Si Shift NO está presionado, las flechas controlan el BARCO (normal)
+    // Si Shift NO está presionado, las flechas controlan el BARCO
     else {
         InputState.dpadUp = keys['ArrowUp'] || false;
         InputState.dpadDown = keys['ArrowDown'] || false;
         InputState.dpadLeft = keys['ArrowLeft'] || false;
         InputState.dpadRight = keys['ArrowRight'] || false;
         
-        // Resetear control de cámara cuando no se usa Shift
         InputState.cameraX = 0;
         InputState.cameraY = 0;
     }
     
-    // Teclas numéricas para selección directa
+    // Teclas numéricas
     InputState.key1 = keys['1'] || false;
     InputState.key2 = keys['2'] || false;
     InputState.key3 = keys['3'] || false;
     InputState.key4 = keys['4'] || false;
     
-    // WASD como joystick virtual (ejecutar funciones)
+    // WASD como joystick virtual (acciones)
     let joyX = 0;
     let joyY = 0;
     
@@ -118,7 +111,6 @@ if (isTouchDevice) {
 }
 
 function setupTouchControls() {
-    // Mostrar los controles táctiles solo si es dispositivo táctil
     const controlsLayer = document.querySelector('.controls-layer');
     if (controlsLayer) {
         controlsLayer.style.display = 'flex';
@@ -133,19 +125,19 @@ function setupTouchControls() {
             e.preventDefault();
             btn.classList.add('active');
             setDpadAction(action, true);
-        });
+        }, { passive: false });
         
         btn.addEventListener('touchend', (e) => {
             e.preventDefault();
             btn.classList.remove('active');
             setDpadAction(action, false);
-        });
+        }, { passive: false });
         
         btn.addEventListener('touchcancel', (e) => {
             e.preventDefault();
             btn.classList.remove('active');
             setDpadAction(action, false);
-        });
+        }, { passive: false });
     });
     
     setupJoystick();
@@ -168,66 +160,12 @@ function setDpadAction(action, isActive) {
     }
 }
 
-// --- JOYSTICKS ---
+// --- CONFIGURACIÓN DE JOYSTICKS ---
 function setupJoystick() {
+    // Izquierdo = Cámara, Derecho = Acciones
     setupSingleJoystick('joystickLeft', 'joystickHandleLeft', 'left');
     setupSingleJoystick('joystickRight', 'joystickHandleRight', 'right');
 }
-
-// --- CONTROL DE CÁMARA POR MOUSE ---
-function setupMouseCamera() {
-    const canvas = document.getElementById('canvas3d');
-    if (!canvas) return;
-    
-    let lastMouseX = 0;
-    let lastMouseY = 0;
-    
-    // Click izquierdo para empezar a orbitar
-    canvas.addEventListener('mousedown', (e) => {
-        if (e.button === 0) { // Solo click izquierdo
-            InputState.mouseDragging = true;
-            lastMouseX = e.clientX;
-            lastMouseY = e.clientY;
-        }
-    });
-    
-    // Mover mouse mientras se arrastra
-    window.addEventListener('mousemove', (e) => {
-        if (!InputState.mouseDragging) return;
-        
-        const deltaX = e.clientX - lastMouseX;
-        const deltaY = e.clientY - lastMouseY;
-        
-        // Acumular rotación (más sensible que el joystick)
-        InputState.cameraOrbitX += deltaX * 0.005;
-        InputState.cameraOrbitY += deltaY * 0.003;
-        
-        // Limitar rotación vertical para no dar vueltas completas
-        InputState.cameraOrbitY = Math.max(-0.5, Math.min(1.2, InputState.cameraOrbitY));
-        
-        lastMouseX = e.clientX;
-        lastMouseY = e.clientY;
-    });
-    
-    // Soltar click para dejar de orbitar
-    window.addEventListener('mouseup', (e) => {
-        if (e.button === 0) {
-            InputState.mouseDragging = false;
-        }
-    });
-    
-    // Scroll del mouse para zoom
-    canvas.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        InputState.cameraZoom += e.deltaY * 0.02;
-        
-        // Limitar zoom entre 10 y 80 unidades
-        InputState.cameraZoom = Math.max(10, Math.min(80, InputState.cameraZoom));
-    }, { passive: false });
-}
-
-// Activar automáticamente al cargar
-setupMouseCamera();
 
 function setupSingleJoystick(joystickId, handleId, side) {
     const joystick = document.getElementById(joystickId);
@@ -237,7 +175,10 @@ function setupSingleJoystick(joystickId, handleId, side) {
     let isDragging = false;
     let startX, startY;
     
-    const maxDistance = 45;
+    // Calcular distancia máxima y posición inicial dinámicamente según el tamaño real del DOM
+    const maxDistance = (joystick.offsetWidth / 2) - (handle.offsetWidth / 2);
+    const initialLeft = (joystick.offsetWidth - handle.offsetWidth) / 2;
+    const initialTop = (joystick.offsetHeight - handle.offsetHeight) / 2;
     
     joystick.addEventListener('touchstart', (e) => {
         e.preventDefault();
@@ -246,11 +187,11 @@ function setupSingleJoystick(joystickId, handleId, side) {
         const rect = joystick.getBoundingClientRect();
         startX = rect.left + rect.width / 2;
         startY = rect.top + rect.height / 2;
-    });
+    }, { passive: false });
     
     window.addEventListener('touchmove', (e) => {
         if (!isDragging) return;
-        e.preventDefault();
+        e.preventDefault(); // Prevenir scroll de la página
         
         const touch = e.touches[0];
         let deltaX = touch.clientX - startX;
@@ -262,35 +203,80 @@ function setupSingleJoystick(joystickId, handleId, side) {
             deltaY = (deltaY / distance) * maxDistance;
         }
         
-        handle.style.left = (45 + deltaX) + 'px';
-        handle.style.top = (45 + deltaY) + 'px';
+        handle.style.left = (initialLeft + deltaX) + 'px';
+        handle.style.top = (initialTop + deltaY) + 'px';
         
+        // LÓGICA INVERTIDA: Izquierda = Cámara, Derecha = Acciones
         if (side === 'left') {
-            InputState.joystickX = deltaX / maxDistance;
-            InputState.joystickY = -deltaY / maxDistance;
-        } else {
             InputState.cameraX = deltaX / maxDistance;
             InputState.cameraY = -deltaY / maxDistance;
+        } else {
+            InputState.joystickX = deltaX / maxDistance;
+            InputState.joystickY = -deltaY / maxDistance;
         }
-    });
+    }, { passive: false });
     
     window.addEventListener('touchend', (e) => {
         if (!isDragging) return;
-        e.preventDefault();
         isDragging = false;
         
-        handle.style.left = '45px';
-        handle.style.top = '45px';
+        handle.style.left = initialLeft + 'px';
+        handle.style.top = initialTop + 'px';
         
         if (side === 'left') {
-            InputState.joystickX = 0;
-            InputState.joystickY = 0;
-        } else {
             InputState.cameraX = 0;
             InputState.cameraY = 0;
+        } else {
+            InputState.joystickX = 0;
+            InputState.joystickY = 0;
         }
     });
 }
+
+// --- CONTROL DE CÁMARA POR MOUSE (PC) ---
+function setupMouseCamera() {
+    const canvas = document.getElementById('canvas3d');
+    if (!canvas) return;
+    
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+    
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 0) {
+            InputState.mouseDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        }
+    });
+    
+    window.addEventListener('mousemove', (e) => {
+        if (!InputState.mouseDragging) return;
+        
+        const deltaX = e.clientX - lastMouseX;
+        const deltaY = e.clientY - lastMouseY;
+        
+        InputState.cameraOrbitX += deltaX * 0.005;
+        InputState.cameraOrbitY += deltaY * 0.003;
+        InputState.cameraOrbitY = Math.max(-0.5, Math.min(1.2, InputState.cameraOrbitY));
+        
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+    });
+    
+    window.addEventListener('mouseup', (e) => {
+        if (e.button === 0) {
+            InputState.mouseDragging = false;
+        }
+    });
+    
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        InputState.cameraZoom += e.deltaY * 0.02;
+        InputState.cameraZoom = Math.max(10, Math.min(80, InputState.cameraZoom));
+    }, { passive: false });
+}
+
+setupMouseCamera();
 
 // --- FUNCIÓN PARA OBTENER INPUT UNIFICADO ---
 function getInput() {
@@ -305,7 +291,7 @@ function getInput() {
         key1: InputState.key1,
         key2: InputState.key2,
         key3: InputState.key3,
-        key4: InputState.key4,  // ← COMA AÑADIDA AQUÍ
+        key4: InputState.key4,
         cameraX: InputState.cameraX,
         cameraY: InputState.cameraY
     };
