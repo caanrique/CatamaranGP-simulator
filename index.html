@@ -413,6 +413,15 @@
                     <p class="menu-subtitle" style="font-size: 14px; margin-bottom: 20px;">Personaliza tu Catamarán F50</p>
                     
                     <div class="config-group">
+                        <label>Condición de Viento:</label>
+                        <select id="windConditionSelector" onchange="updateConfigFromUI()">
+                            <option value="light">🌬️ Navegación Lenta (5 - 16 nudos)</option>
+                            <option value="intermediate" selected>🌬️ Navegación Intermedia (16 - 24 nudos)</option>
+                            <option value="heavy">🌪️ Navegación Rápida (24 - 35 nudos)</option>
+                        </select>
+                    </div>
+
+                    <div class="config-group">
                         <label>Tamaño del Ala:</label>
                         <select id="wingSelector" onchange="updateConfigFromUI()">
                             <option value="light">Ligera (29m) - Vientos 7-12 nudos</option>

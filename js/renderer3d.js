@@ -14,6 +14,8 @@ let crewGlows = {};
 let water, wakeParticles = [];
 let sky, sun;
 let hullMeshRef = null;
+let foilPortMesh = null;      // Foil de Babor (Izquierda)
+let foilStarboardMesh = null; // Foil de Estribor (Derecha)
 
 // === SISTEMA DE PISTA Y BOYAS (Variable Global) ===
 window.trackBuoys = [];
@@ -151,6 +153,7 @@ function createBoat() {
         boatGroup.add(hull);
     });
 
+        // 2. Foils
     loadModel('models/foils.obj', function(foilsModel) {
         foilsModel.scale.set(1, 1, 1);
         foilsModel.position.set(0, 1, 0);
@@ -158,10 +161,17 @@ function createBoat() {
             if (child.isMesh) {
                 child.castShadow = true;
                 child.material = new THREE.MeshPhongMaterial({ color: 0x2c3e50, shininess: 30 });
+                
+                // Intentar identificar el lado por el nombre del mesh en el archivo 3D
+                const nameLower = child.name.toLowerCase();
+                if (nameLower.includes('port') || nameLower.includes('babor') || nameLower.includes('left')) {
+                    foilPortMesh = child;
+                } else if (nameLower.includes('starboard') || nameLower.includes('estribor') || nameLower.includes('right')) {
+                    foilStarboardMesh = child;
+                }
             }
         });
         boatGroup.add(foilsModel);
-        foils.frontPort = foilsModel;
     });
 
     loadModel('models/wing.obj', function(wing) {
@@ -263,6 +273,49 @@ function update3DScene() {
     }
 
     if (water) water.material.uniforms['time'].value += 1.0 / 60.0;
+    
+        // === LÓGICA DE FOILS DINÁMICOS (F50 REAL) ===
+    const va = calculateApparentWind().angle;
+    const windFromPort = (va > 0 && va < 180); // ¿Viento viene de la izquierda?
+    
+    let portFoilTarget = 0;      // 0 = retraído (arriba), 1 = sumergido (abajo)
+    let starboardFoilTarget = 0; 
+
+    if (CONFIG.isManeuvering) {
+        // En maniobra (virada/trasluchada): AMBOS foils abajo para máxima estabilidad
+        portFoilTarget = CONFIG.foilHeight;
+        starboardFoilTarget = CONFIG.foilHeight;
+    } else if (CONFIG.isFlying) {
+        // En vuelo: Solo el foil de SOTAVENTO (el que está en el agua) se mantiene abajo
+        if (windFromPort) {
+            // Viento a babor -> Barco escora a estribor -> Foil de estribor es sotavento (abajo)
+            starboardFoilTarget = CONFIG.foilHeight;
+            portFoilTarget = 0; // Foil de babor (barlovento) se levanta
+        } else {
+            // Viento a estribor -> Barco escora a babor -> Foil de babor es sotavento (abajo)
+            portFoilTarget = CONFIG.foilHeight;
+            starboardFoilTarget = 0; // Foil de estribor (barlovento) se levanta
+        }
+    } else {
+        // En el agua (despegue o navegación normal): Ambos foils abajo
+        portFoilTarget = CONFIG.foilHeight;
+        starboardFoilTarget = CONFIG.foilHeight;
+    }
+
+    // Aplicar movimiento suave (interpolación) a los foils
+    const foilLerpSpeed = 0.05;
+    const retractDistance = 1.5; // Cuánto sube el foil al retraerse (ajustar según tu modelo 3D)
+
+    if (foilPortMesh) {
+        const targetY = (1 - portFoilTarget) * retractDistance;
+        foilPortMesh.position.y += (targetY - foilPortMesh.position.y) * foilLerpSpeed;
+    }
+    if (foilStarboardMesh) {
+        const targetY = (1 - starboardFoilTarget) * retractDistance;
+        foilStarboardMesh.position.y += (targetY - foilStarboardMesh.position.y) * foilLerpSpeed;
+    }
+    // ==========================================
+    
     updateWake();
     updateCrewPositions();
     updateCamera();

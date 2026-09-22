@@ -5,15 +5,16 @@
 
 const CONFIG = {
     boatX: 0,          // Posición horizontal en el mapa
-    boatZ: 0, 
+    boatZ: 0,          // Posición vertical (profundidad) en el mapa
     fieldHalfWidth: 2000,   // Mitad del ancho del campo (4000m total)
-    fieldHalfHeight: 1000,  // Mitad del alto del campo (2000m total)         // Posición vertical (profundidad) en el mapa
+    fieldHalfHeight: 1000,  // Mitad del alto del campo (2000m total)
     trueWindSpeed: 20,
     trueWindDirection: 90,
-    baseWindSpeed: 20,        // <-- AGREGAR: Velocidad base
-    baseWindDirection: 90,    // <-- AGREGAR: Dirección base
-    lastWindShiftTime: 0,     // <-- AGREGAR: Temporizador de cambio
-    windShiftInterval: 10000, // <-- AGREGAR: Cambiar cada 10 segundos (10000 ms)
+    baseWindSpeed: 20,
+    baseWindDirection: 90,
+    windCondition: 'intermediate', // 'light', 'intermediate' o 'heavy'
+    lastWindShiftTime: 0,
+    windShiftInterval: 10000,
     boatSpeed: 0,
     boatHeading: 0,
     totalManeuvers: 0,
@@ -128,9 +129,22 @@ function getBaseTargetSpeed(vaAngle, vaSpeed) {
 }
 
 function calculateSailTrimEfficiency() {
-    const va = calculateApparentWind().angle;
-    const optimal = va <= 180 ? -((180 - va) * 0.5) : ((360 - va) * 0.5);
+    const va = calculateApparentWind().angle; // 0°=Proa, 90°=Babor, 180°=Popa, 270°=Estribor
+    
+    let optimal;
+    if (va <= 180) {
+        // Viento a BABOR (izquierda) -> La vela debe ir a ESTRIBOR (derecha, ángulo positivo)
+        // Ejemplo: si va = 90° (través), optimal = +45°
+        optimal = ((180 - va) * 0.5);
+    } else {
+        // Viento a ESTRIBOR (derecha) -> La vela debe ir a BABOR (izquierda, ángulo negativo)
+        // Ejemplo: si va = 270° (través), optimal = -45°
+        optimal = -((360 - va) * 0.5);
+    }
+    
     const diff = Math.abs(CONFIG.sailTrim - optimal);
+    
+    // Penaliza la eficiencia si la vela está del lado incorrecto o mal ajustada
     return Math.max(0.2, Math.min(1.0, 1.0 - (diff / 90) * 0.8));
 }
 
@@ -139,7 +153,20 @@ function getTargetSpeed(vaAngle, vaSpeed) {
     speed *= calculateSailTrimEfficiency();
     speed *= calculateFlapEfficiency(CONFIG.flapAngle);
     speed *= calculateJibSlotEffect();
-    return Math.max(0, Math.min(speed, CONFIG.maxBoatSpeed));
+    
+    // === CORRECCIÓN: TECHO DE VELOCIDAD POR CONDICIÓN DE VIENTO ===
+    // Esto rompe el bucle de retroalimentación donde la velocidad del barco 
+    // infla artificialmente el viento aparente y la tabla polar devuelve 
+    // velocidades imposibles para la condición real del viento.
+    let absoluteMaxSpeed = 55; // Máximo para condiciones 'heavy'
+    
+    if (CONFIG.windCondition === 'light') {
+        absoluteMaxSpeed = 24; // Un F50 no pasa de ~24 nudos con viento ligero
+    } else if (CONFIG.windCondition === 'intermediate') {
+        absoluteMaxSpeed = 38; // Máximo realista en viento intermedio
+    }
+    
+    return Math.max(0, Math.min(speed, absoluteMaxSpeed));
 }
 
 // ==========================================
@@ -438,7 +465,7 @@ function getBoatStatus() {
     };
 }
 
-// === SISTEMA DE VIENTO DINÁMICO ===
+// === SISTEMA DE VIENTO DINÁMICO (Con rangos por dificultad) ===
 function updateDynamicWind() {
     const now = Date.now();
     
@@ -450,10 +477,19 @@ function updateDynamicWind() {
         const shift = (Math.random() * 30) - 15;
         CONFIG.trueWindDirection = normalizeAngle(CONFIG.baseWindDirection + shift);
         
-        // 2. Cambio de velocidad aleatorio entre -4 y +4 nudos respecto a la base
-        const speedChange = (Math.random() * 8) - 4;
-        CONFIG.trueWindSpeed = Math.max(5, Math.min(35, CONFIG.baseWindSpeed + speedChange));
+        // 2. Definir rangos de velocidad según la condición elegida
+        let minSpeed, maxSpeed;
+        if (CONFIG.windCondition === 'light') {
+            minSpeed = 5; maxSpeed = 16;
+        } else if (CONFIG.windCondition === 'intermediate') {
+            minSpeed = 16; maxSpeed = 24;
+        } else { // heavy
+            minSpeed = 24; maxSpeed = 35;
+        }
         
-        console.log(`🌬️ ¡Cambio de viento! Dirección: ${Math.round(CONFIG.trueWindDirection)}° | Velocidad: ${CONFIG.trueWindSpeed.toFixed(1)} nudos`);
+        // Generar velocidad aleatoria DENTRO del rango estricto
+        CONFIG.trueWindSpeed = minSpeed + Math.random() * (maxSpeed - minSpeed);
+        
+        console.log(`🌬️ ¡Cambio de viento! Condición: ${CONFIG.windCondition} | Dirección: ${Math.round(CONFIG.trueWindDirection)}° | Velocidad: ${CONFIG.trueWindSpeed.toFixed(1)} nudos`);
     }
 }

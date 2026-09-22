@@ -31,22 +31,21 @@ function showConfigMenu() {
     if (modeMenu) modeMenu.classList.add('hidden');
     if (backBtn) backBtn.classList.remove('visible');
 
-    const hudBtn = document.getElementById('toggleHudBtn');
-    if (hudBtn) hudBtn.classList.remove('visible');
-
-     if (typeof clearPracticeTrack === 'function') clearPracticeTrack();
+    if (typeof clearPracticeTrack === 'function') clearPracticeTrack();
     
     // Sincronizar UI con el estado actual
+    const windSelect = document.getElementById('windConditionSelector');
     const wingSelect = document.getElementById('wingSelector');
     const jibToggle = document.getElementById('jibToggle');
+    
+    if (windSelect && typeof CONFIG !== 'undefined') windSelect.value = CONFIG.windCondition || 'intermediate';
     if (wingSelect && typeof CONFIG !== 'undefined') wingSelect.value = CONFIG.currentWing;
     if (jibToggle && typeof CONFIG !== 'undefined') jibToggle.checked = CONFIG.jibActive;
     
     currentGameMode = null;
     console.log('⚙️ Pantalla de Configuración mostrada');
     
-    // DIBUJAR VISTA PREVIA DEL BARCO
-    setTimeout(drawBoatPreview, 100); // Pequeño delay para asegurar que el canvas está listo
+    setTimeout(drawBoatPreview, 100);
 }
 
 function showModeMenu() {
@@ -117,11 +116,21 @@ function startGame(mode) {
 
 // === SISTEMA DE CONFIGURACIÓN EN TIEMPO REAL ===
 function updateConfigFromUI() {
+    // 1. Condición de viento
+    const windSelect = document.getElementById('windConditionSelector');
+    if (windSelect && typeof CONFIG !== 'undefined') {
+        CONFIG.windCondition = windSelect.value;
+        // Forzar un cambio de viento inmediato para aplicar el nuevo rango
+        CONFIG.lastWindShiftTime = 0; 
+    }
+
+    // 2. Tamaño del ala
     const wingSelect = document.getElementById('wingSelector');
     if (wingSelect && typeof setWing === 'function') {
         setWing(wingSelect.value);
     }
 
+    // 3. Toggle del Jib
     const jibCheckbox = document.getElementById('jibToggle');
     if (jibCheckbox && typeof toggleJib === 'function') {
         if (jibCheckbox.checked && !CONFIG.jibActive) {
