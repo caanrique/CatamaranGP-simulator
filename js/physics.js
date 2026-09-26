@@ -1,6 +1,6 @@
 // ============================================
 // CATAMARANGP SIMULATOR - MÓDULO DE FÍSICA
-// Versión Final: Interpolación polar blindada (Clamp) contra acelerones
+// Versión Final: Maniobras con desaceleración natural (sin rebotes)
 // ============================================
 
 const CONFIG = {
@@ -12,7 +12,7 @@ const CONFIG = {
     trueWindDirection: 90,
     baseWindSpeed: 20,
     baseWindDirection: 90,
-    windCondition: 'intermediate', // 'light', 'intermediate' o 'heavy'
+    windCondition: 'intermediate',
     lastWindShiftTime: 0,
     windShiftInterval: 10000,
     boatSpeed: 0,
@@ -23,6 +23,7 @@ const CONFIG = {
     sailTrim: 0,
     flapAngle: 0,
     jibActive: false,
+    jibInflation: 1.0,
     jibAngle: 0,
     foilHeight: 0,
     takeoffSpeed: 13,
@@ -104,18 +105,30 @@ function calculateFlapEfficiency(flapAngle) {
 
 function calculateJibSlotEffect() {
     if (!CONFIG.jibActive || !getCurrentPolar().jibAllowed) return 1.0;
-    return 1.08;
+    
+    const va = calculateApparentWind().angle;
+    let normAngle = va > 180 ? 360 - va : va;
+    
+    let jibBonus = 0;
+    if (normAngle >= 30 && normAngle <= 120) {
+        jibBonus = 0.08;
+    } else if (normAngle >= 20 && normAngle < 30) {
+        jibBonus = 0.08 * ((normAngle - 20) / 10);
+    } else if (normAngle > 120 && normAngle <= 140) {
+        jibBonus = 0.08 * ((140 - normAngle) / 20);
+    }
+    
+    // LA CLAVE: El bono se multiplica por el nivel de inflado. 
+    // Si viene de una maniobra, empieza en 0 y sube suavemente, sin estornudos.
+    return 1.0 + (jibBonus * CONFIG.jibInflation);
 }
 
-// === BLINDADO: Clamp (sujeción) de velocidad para evitar extrapolación explosiva ===
 function getBaseTargetSpeed(vaAngle, vaSpeed) {
     const polar = getCurrentPolar();
     let normAngle = vaAngle > 180 ? 360 - vaAngle : vaAngle;
     if (normAngle < 20) return 0;
     if (normAngle > 160) normAngle = 160;
 
-    // 1. CLAMP: Sujetamos la velocidad de consulta al máximo de la tabla (30 nudos)
-    // Esto evita que sIdx se quede en 0 y sF se vuelva 5.0 cuando el viento aparente es alto.
     const maxTableSpeed = polar.speeds[polar.speeds.length - 1];
     const minTableSpeed = polar.speeds[0];
     const clampedVaSpeed = Math.max(minTableSpeed, Math.min(vaSpeed, maxTableSpeed));
@@ -168,7 +181,6 @@ function getTargetSpeed(vaAngle, vaSpeed) {
     speed *= calculateFlapEfficiency(CONFIG.flapAngle);
     speed *= calculateJibSlotEffect();
     
-    // Techo de seguridad final por condición de viento
     let absoluteMaxSpeed = 55; 
     if (CONFIG.windCondition === 'light') absoluteMaxSpeed = 26; 
     else if (CONFIG.windCondition === 'intermediate') absoluteMaxSpeed = 40; 
@@ -191,17 +203,17 @@ function updateBoatSpeed() {
     const aw = calculateApparentWind();
     let target = getTargetSpeed(aw.angle, aw.speed);
     
-    target *= (1 - (CONFIG.heelAngle / CONFIG.maxHeelAngle) * 0.3);
+    // CORREGIDO: Usar valor absoluto para penalizar la velocidad sin importar el lado de la escora
+    target *= (1 - (Math.abs(CONFIG.heelAngle) / CONFIG.maxHeelAngle) * 0.3);
     target *= calculateFoilEfficiency();
     
-    // Aceleración suave y controlada
     CONFIG.boatSpeed += (target - CONFIG.boatSpeed) * CONFIG.accelerationFactor;
     CONFIG.boatSpeed = Math.max(0, CONFIG.boatSpeed);
     
     updateHeelAngle();
     updateFlightState();
     detectManeuver();
-    updateManeuver();
+    updateManeuver(); // <--- Esto ahora aplica la resta de velocidad de forma natural
     updateBoatPosition();
     
     return CONFIG.boatSpeed;
@@ -254,25 +266,56 @@ function calculateWeightDistribution() {
 
 function updateHeelAngle() {
     if (CONFIG.isCapsized || CONFIG.isNosediving) return CONFIG.heelAngle;
+    
     const aw = calculateApparentWind();
     const wingFactor = CONFIG.wingAreaMultiplier[CONFIG.currentWing];
-    const windPush = (aw.speed * aw.speed) * 0.05 * wingFactor;
-    const heelingForce = windPush * Math.sin(degToRad(aw.angle));
-    const wd = calculateWeightDistribution();
-    const isStarboardWind = aw.angle > 0 && aw.angle < 180;
-    const weatherW = isStarboardWind ? wd.starboard : wd.port;
-    const leeW = isStarboardWind ? wd.port : wd.starboard;
-    const crewRighting = Math.max(0, (weatherW - leeW)) * 0.15;
-    const flightStability = CONFIG.isFlying ? 0.9 : 1.0;
-    let netForce = (heelingForce - crewRighting) * flightStability;
-    let targetHeel = Math.max(0, netForce * 0.6); 
     
+    // Fuerza del viento (reducida para un barco de 2+ toneladas)
+    const windPush = (aw.speed * aw.speed) * 0.005 * wingFactor;
+    
+    // heelingForce: 
+    // Positivo (viento de estribor) = empuja a escorar a babor (+ rotation.z)
+    // Negativo (viento de babor) = empuja a escorar a estribor (- rotation.z)
+    const heelingForce = windPush * Math.sin(degToRad(aw.angle));
+    
+    const wd = calculateWeightDistribution();
+    
+    // crewMoment: Fórmula simétrica. 
+    // Si hay más peso a babor (wd.port > wd.starboard), el valor es positivo (empuja a escorar a babor).
+    // Si hay más peso a estribor, el valor es negativo (empuja a escorar a estribor).
+    // Esto contrarresta o suma a heelingForce de forma 100% realista.
+       // crewMoment: Drásticamente reducido para reflejar un barco de 2000+ kg
+    // La tripulación ahora tiene un efecto sutil y progresivo, no un golpe brusco
+    let crewMoment = 0;
+    if (aw.speed > 18) {
+        const windStrengthFactor = Math.min(1.0, (aw.speed - 18) / 15);
+        crewMoment = (wd.port - wd.starboard) * 0.005 * windStrengthFactor; // Reducido de 0.12 a 0.005
+    } else {
+        crewMoment = (wd.port - wd.starboard) * 0.001; // Reducido de 0.02 a 0.001 (casi imperceptible)
+    }
+    
+    const flightStability = CONFIG.isFlying ? 0.9 : 1.0;
+    
+    // Fuerza neta de escora
+    let netForce = (heelingForce + crewMoment) * flightStability;
+    
+    // targetHeel: 
+    // Positivo = escora a babor (babor se hunde, estribor sube)
+    // Negativo = escora a estribor (estribor se hunde, babor sube)
+    let targetHeel = netForce * 0.8;
+    
+    // Suavizado del movimiento (lerp)
     if (CONFIG.heelAngle < targetHeel) {
         CONFIG.heelAngle += (targetHeel - CONFIG.heelAngle) * 0.04;
     } else {
         CONFIG.heelAngle += (targetHeel - CONFIG.heelAngle) * 0.1;
     }
-    if (CONFIG.heelAngle >= CONFIG.maxHeelAngle) triggerCapsize();
+    
+    // Vuelco: si la escora ABSOLUTA supera el límite (45°)
+    if (Math.abs(CONFIG.heelAngle) >= CONFIG.maxHeelAngle) {
+        triggerCapsize();
+    }
+    
     return CONFIG.heelAngle;
 }
 
@@ -322,38 +365,63 @@ function updateFlightState() {
 }
 
 function updateNosediveRisk() {
-    if (!CONFIG.isFlying) { CONFIG.nosediveRisk = Math.max(0, CONFIG.nosediveRisk - 0.05); return; }
+    if (!CONFIG.isFlying) { 
+        // Si no está volando, el riesgo baja rápido
+        CONFIG.nosediveRisk = Math.max(0, CONFIG.nosediveRisk - 0.1); 
+        return; 
+    }
+    
     let risk = 0;
-    if (CONFIG.foilHeight > 0.9) risk += (CONFIG.foilHeight - 0.9) * 0.02;
-    if (CONFIG.boatSpeed > 45) risk += (CONFIG.boatSpeed - 45) * 0.001;
-    if (CONFIG.heelAngle > 15) risk += (CONFIG.heelAngle - 15) * 0.01;
+    // Solo acumula riesgo si el foil está MUY alto (más de 95%)
+    if (CONFIG.foilHeight > 0.95) risk += (CONFIG.foilHeight - 0.95) * 0.05;
+    
+    // Solo a velocidades muy altas (más de 40 nudos)
+    if (CONFIG.boatSpeed > 40) risk += (CONFIG.boatSpeed - 40) * 0.002;
+    
+    // Si hay mucha escora (usando valor absoluto para ambos lados)
+    if (Math.abs(CONFIG.heelAngle) > 20) risk += (Math.abs(CONFIG.heelAngle) - 20) * 0.015;
+    
     CONFIG.nosediveRisk += risk;
-    if (risk === 0) CONFIG.nosediveRisk = Math.max(0, CONFIG.nosediveRisk - 0.02);
+    
+    // Si no hay factores de riesgo, se recupera rápidamente
+    if (risk === 0) CONFIG.nosediveRisk = Math.max(0, CONFIG.nosediveRisk - 0.05);
     CONFIG.nosediveRisk = Math.max(0, Math.min(1, CONFIG.nosediveRisk));
-    if (CONFIG.nosediveRisk > 0.95 && Math.random() < 0.002) triggerNosedive();
+    
+    // Solo se activa si el riesgo es extremo (98%) y con un poco de aleatoriedad
+    if (CONFIG.nosediveRisk > 0.98 && Math.random() < 0.005) {
+        triggerNosedive();
+    }
 }
 
 function triggerNosedive() {
     if (CONFIG.isNosediving) return;
     CONFIG.isNosediving = true;
-    CONFIG.nosediveTimer = CONFIG.nosedivePenalty * 60;
+    CONFIG.nosediveTimer = CONFIG.nosedivePenalty * 60; // ~8 segundos de recuperación
     CONFIG.isFlying = false;
-    CONFIG.foilHeight = 0;
-    CONFIG.boatSpeed *= 0.3;
+    CONFIG.foilHeight = 0; // Los foils se sumergen de golpe
+    
+    // CORREGIDO: En lugar de *= 0.3 (muro de lodo), *= 0.7 (resistencia al agua)
+    // Y mantenemos un mínimo de 5 nudos de inercia para que no se sienta muerto
+    CONFIG.boatSpeed = Math.max(5, CONFIG.boatSpeed * 0.7); 
+    
     CONFIG.nosediveRisk = 0;
-    console.log('💥 ¡NOSEDIVE! Caída violenta');
+    console.log('💥 ¡NOSEDIVE! Proa clavada (resistencia hidrodinámica aplicada)');
 }
 
 function updateNosedive() {
     if (CONFIG.nosediveTimer > 0) {
         CONFIG.nosediveTimer--;
-        CONFIG.boatSpeed *= 0.95; 
+        
+        // CORREGIDO: Fricción suave del agua en lugar de frenado agresivo
+        // Se reduce un 2% por frame, permitiendo que el barco "glide" (se deslice)
+        CONFIG.boatSpeed = Math.max(3, CONFIG.boatSpeed * 0.98); 
+        
         if (CONFIG.nosediveTimer === 0) {
             CONFIG.isNosediving = false;
             CONFIG.foilHeight = 0;
-            CONFIG.boatSpeed = 0;
+            // ELIMINADO: CONFIG.boatSpeed = 0; (Ahora el barco mantiene su inercia)
             CONFIG.nosediveRisk = 0;
-            console.log('✅ Barco recuperado del nosedive. Listo para navegar.');
+            console.log('✅ Proa levantada. El barco recupera inercia para navegar.');
         }
     }
 }
@@ -369,14 +437,33 @@ function getWindSide(vaAngle) { return (vaAngle >= 0 && vaAngle <= 180) ? 'starb
 
 function detectManeuver() {
     if (CONFIG.isManeuvering || CONFIG.isCapsized || CONFIG.isNosediving) return;
-    const currentSide = getWindSide(calculateApparentWind().angle);
-    if (CONFIG.previousWindSide === null) { CONFIG.previousWindSide = currentSide; return; }
-    if (currentSide !== CONFIG.previousWindSide) {
-        const va = calculateApparentWind().angle;
-        if (va < 40 || va > 320) triggerManeuver('tacking');
-        else if (va > 140 && va < 220) triggerManeuver('gybing');
+    
+    const va = calculateApparentWind().angle;
+    const currentSide = getWindSide(va);
+    
+    if (CONFIG.previousWindSide === null) { 
+        CONFIG.previousWindSide = currentSide; 
+        return; 
     }
-    CONFIG.previousWindSide = currentSide;
+    
+    if (currentSide !== CONFIG.previousWindSide) {
+        // ZONA MUERTA: Evitar oscilaciones y disparos múltiples en proa (0°/360°) o popa (180°)
+        // Solo viramos si el viento está claramente a menos de 30° de la proa
+        if (va < 30 || va > 330) {
+            triggerManeuver('tacking');
+            CONFIG.previousWindSide = currentSide;
+        } 
+        // Solo trasluchamos si el viento está claramente a más de 30° de la popa (es decir, < 150 o > 210)
+        else if (va < 150 || va > 210) {
+            triggerManeuver('gybing');
+            CONFIG.previousWindSide = currentSide;
+        } 
+        else {
+            // Estamos en la "zona muerta" (ej. entre 150° y 210°). 
+            // No iniciamos maniobra, pero actualizamos el lado para no quedar atrapados en el chequeo.
+            CONFIG.previousWindSide = currentSide;
+        }
+    }
 }
 
 function triggerManeuver(type) {
@@ -384,23 +471,46 @@ function triggerManeuver(type) {
     CONFIG.isManeuvering = true;
     CONFIG.maneuverType = type;
     CONFIG.maneuverTimer = Math.round(CONFIG.maneuverDuration[type] * (CONFIG.currentWing === 'light' ? 1.3 : CONFIG.currentWing === 'strong' ? 0.7 : 1.0));
-    CONFIG.currentManeuverSpeedLoss = CONFIG.maneuverSpeedLoss * (CONFIG.currentWing === 'light' ? 1.2 : CONFIG.currentWing === 'strong' ? 0.8 : 1.0);
+    
+    // REDUCIDO: Pérdida de 5 nudos en lugar de 10, para que la recuperación sea más suave
+    CONFIG.currentManeuverSpeedLoss = 5 * (CONFIG.currentWing === 'light' ? 1.2 : CONFIG.currentWing === 'strong' ? 0.8 : 1.0);
+    CONFIG.jibInflation = 0.0; // Desinflar el jib al iniciar la maniobra
+    
     console.log(`🔄 ¡${type === 'tacking' ? 'VIRADA' : 'TRASLUCHADA'}!`);
 }
 
+// === CORREGIDO: Desaceleración natural por resta, no por multiplicación ===
 function updateManeuver() {
-    if (!CONFIG.isManeuvering) return;
-    CONFIG.maneuverTimer--;
-    const progress = 1 - (CONFIG.maneuverTimer / CONFIG.maneuverDuration[CONFIG.maneuverType]);
-    let mult = 1 - (Math.sin(progress * Math.PI) * (CONFIG.currentManeuverSpeedLoss || CONFIG.maneuverSpeedLoss));
-    CONFIG.boatSpeed *= mult;
-    const ease = Math.sin(progress * Math.PI) * (CONFIG.maneuverType === 'gybing' ? 0.20 : 0.15);
-    CONFIG.sailTrim += (-CONFIG.sailTrim - CONFIG.sailTrim) * ease;
-    CONFIG.flapAngle += (-CONFIG.flapAngle - CONFIG.flapAngle) * ease;
-    if (CONFIG.maneuverTimer <= 0) {
-        CONFIG.isManeuvering = false; 
-        CONFIG.maneuverType = null; 
-        CONFIG.currentManeuverSpeedLoss = 0;
+    if (CONFIG.isManeuvering && CONFIG.maneuverType) {
+        // FASE 1: Durante la maniobra activa
+        CONFIG.maneuverTimer--;
+        const duration = CONFIG.maneuverDuration[CONFIG.maneuverType];
+        const progress = 1 - (CONFIG.maneuverTimer / duration);
+        
+        const dragCurve = Math.sin(progress * Math.PI);
+        const speedLossThisFrame = (CONFIG.currentManeuverSpeedLoss * dragCurve) / (duration / 60);
+        
+        CONFIG.boatSpeed = Math.max(0, CONFIG.boatSpeed - speedLossThisFrame);
+        
+        const ease = dragCurve * (CONFIG.maneuverType === 'gybing' ? 0.20 : 0.15);
+        CONFIG.sailTrim += (0 - CONFIG.sailTrim) * ease;
+        CONFIG.flapAngle += (0 - CONFIG.flapAngle) * ease;
+        
+        CONFIG.jibInflation = 0.0; // Mantener desinflado mientras gira
+        
+        if (CONFIG.maneuverTimer <= 0) {
+            CONFIG.maneuverType = null; // La maniobra de giro terminó
+            CONFIG.currentManeuverSpeedLoss = 0;
+            // NOTA: No ponemos isManeuvering = false aún, para entrar en la Fase 2
+        }
+    } else if (CONFIG.isManeuvering && CONFIG.jibInflation < 1.0) {
+        // FASE 2: Recuperación post-maniobra (El jib se infla suavemente)
+        CONFIG.jibInflation += 0.008; // Tarda ~2 segundos (120 frames) en inflarse al 100%
+        
+        if (CONFIG.jibInflation >= 1.0) {
+            CONFIG.jibInflation = 1.0;
+            CONFIG.isManeuvering = false; // Ahora sí, liberamos el barco completamente
+        }
     }
 }
 

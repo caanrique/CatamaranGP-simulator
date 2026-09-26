@@ -14,8 +14,12 @@ let crewGlows = {};
 let water, wakeParticles = [];
 let sky, sun;
 let hullMeshRef = null;
-let foilPortMesh = null;      // Foil de Babor (Izquierda)
-let foilStarboardMesh = null; // Foil de Estribor (Derecha)
+
+// Foils individuales (delanteros móviles, traseros fijos)
+let foilPortFront = null;
+let foilPortRear = null;
+let foilStarboardFront = null;
+let foilStarboardRear = null;
 
 // === SISTEMA DE PISTA Y BOYAS (Variable Global) ===
 window.trackBuoys = [];
@@ -153,24 +157,52 @@ function createBoat() {
         boatGroup.add(hull);
     });
 
-        // 2. Foils
+    // 2. Foils (identificados por su centro geométrico real)
     loadModel('models/foils.obj', function(foilsModel) {
         foilsModel.scale.set(1, 1, 1);
         foilsModel.position.set(0, 1, 0);
+        
+        const portMeshes = [];
+        const starboardMeshes = [];
+        
         foilsModel.traverse(function (child) {
             if (child.isMesh) {
                 child.castShadow = true;
                 child.material = new THREE.MeshPhongMaterial({ color: 0x2c3e50, shininess: 30 });
                 
-                // Intentar identificar el lado por el nombre del mesh en el archivo 3D
+                // TRUCO INFALIBLE: Calcular el centro geométrico real de la malla
+                child.geometry.computeBoundingBox();
+                const center = new THREE.Vector3();
+                child.geometry.boundingBox.getCenter(center);
+                child.userData.localZ = center.z; // Guardamos su posición Z real
+                
                 const nameLower = child.name.toLowerCase();
-                if (nameLower.includes('port') || nameLower.includes('babor') || nameLower.includes('left')) {
-                    foilPortMesh = child;
-                } else if (nameLower.includes('starboard') || nameLower.includes('estribor') || nameLower.includes('right')) {
-                    foilStarboardMesh = child;
+                if (nameLower.includes('babor') || nameLower.includes('port') || nameLower.includes('left')) {
+                    portMeshes.push(child);
+                } else if (nameLower.includes('estribor') || nameLower.includes('starboard') || nameLower.includes('right')) {
+                    starboardMeshes.push(child);
                 }
             }
         });
+        
+        // Ordenar por centro geométrico Z. El más negativo es la proa (delantero)
+        portMeshes.sort((a, b) => a.userData.localZ - b.userData.localZ);
+        starboardMeshes.sort((a, b) => a.userData.localZ - b.userData.localZ);
+        
+        if (portMeshes.length >= 2) {
+            foilPortFront = portMeshes[0];
+            foilPortRear = portMeshes[1];
+            console.log('✅ Foil Babor Delantero (Z:', foilPortFront.userData.localZ.toFixed(2), '):', foilPortFront.name);
+            console.log('✅ Foil Babor Trasero    (Z:', foilPortRear.userData.localZ.toFixed(2), '):', foilPortRear.name);
+        }
+        
+        if (starboardMeshes.length >= 2) {
+            foilStarboardFront = starboardMeshes[0];
+            foilStarboardRear = starboardMeshes[1];
+            console.log('✅ Foil Estribor Delantero (Z:', foilStarboardFront.userData.localZ.toFixed(2), '):', foilStarboardFront.name);
+            console.log('✅ Foil Estribor Trasero    (Z:', foilStarboardRear.userData.localZ.toFixed(2), '):', foilStarboardRear.name);
+        }
+        
         boatGroup.add(foilsModel);
     });
 
@@ -256,12 +288,23 @@ function createCrew() {
     }
 }
 
+function getCrewSinkFactor() {
+    if (typeof CrewState === 'undefined' || !CrewState.positions) return 0;
+    let crewCount = 0;
+    for (const role in CrewState.positions) crewCount++;
+    // 85 kg por tripulante, máximo 340 kg
+    // Factor de hundimiento: 0.0003 por kg → máximo 0.102 unidades (apenas perceptible)
+    return crewCount * 85 * 0.0003;
+}
+
 function update3DScene() {
     if (!boatGroup) return;
 
     boatGroup.rotation.y = degToRad(CONFIG.boatHeading);
     boatGroup.rotation.z = degToRad(CONFIG.heelAngle);
-    boatGroup.position.y = -2 + (CONFIG.foilHeight * 2.5);
+    // Hundimiento por peso de tripulación (MUY sutil, máximo ~0.1 unidades)
+    const sinkFactor = getCrewSinkFactor();
+    boatGroup.position.y = -2 + (CONFIG.foilHeight * 1.2) - sinkFactor;
 
     if (mastGroup) mastGroup.rotation.y = degToRad(CONFIG.sailTrim);
     if (flapHinge) flapHinge.rotation.y = degToRad(-CONFIG.flapAngle);
@@ -274,45 +317,44 @@ function update3DScene() {
 
     if (water) water.material.uniforms['time'].value += 1.0 / 60.0;
     
-        // === LÓGICA DE FOILS DINÁMICOS (F50 REAL) ===
-    const va = calculateApparentWind().angle;
-    const windFromPort = (va > 0 && va < 180); // ¿Viento viene de la izquierda?
-    
-    let portFoilTarget = 0;      // 0 = retraído (arriba), 1 = sumergido (abajo)
-    let starboardFoilTarget = 0; 
-
-    if (CONFIG.isManeuvering) {
-        // En maniobra (virada/trasluchada): AMBOS foils abajo para máxima estabilidad
-        portFoilTarget = CONFIG.foilHeight;
-        starboardFoilTarget = CONFIG.foilHeight;
-    } else if (CONFIG.isFlying) {
-        // En vuelo: Solo el foil de SOTAVENTO (el que está en el agua) se mantiene abajo
-        if (windFromPort) {
-            // Viento a babor -> Barco escora a estribor -> Foil de estribor es sotavento (abajo)
-            starboardFoilTarget = CONFIG.foilHeight;
-            portFoilTarget = 0; // Foil de babor (barlovento) se levanta
+    // === FOILS DINÁMICOS (SOLO delanteros, traseros NUNCA se mueven) ===
+    if (foilPortFront && foilStarboardFront) {
+        const va = calculateApparentWind().angle;
+        const windFromPort = (va > 0 && va < 180);
+        
+        let portFrontTarget = 1; // 1 = sumergido (abajo), 0 = retraído (arriba)
+        let starboardFrontTarget = 1;
+        const retractUp = 1.5; // Ajusta este valor si el foil sube demasiado o muy poco
+        const lerpSpeed = 0.05;
+        
+        if (CONFIG.isManeuvering || CONFIG.boatSpeed < 10) {
+            // Maniobra o baja velocidad: AMBOS delanteros abajo para estabilidad
+            portFrontTarget = 1;
+            starboardFrontTarget = 1;
+        } else if (CONFIG.isFlying) {
+            // Vuelo en línea recta: solo sotavento abajo, barlovento arriba
+            if (windFromPort) {
+                starboardFrontTarget = 1; // Estribor es sotavento -> ABAJO
+                portFrontTarget = 0;      // Babor es barlovento -> ARRIBA
+            } else {
+                portFrontTarget = 1;      // Babor es sotavento -> ABAJO
+                starboardFrontTarget = 0; // Estribor es barlovento -> ARRIBA
+            }
         } else {
-            // Viento a estribor -> Barco escora a babor -> Foil de babor es sotavento (abajo)
-            portFoilTarget = CONFIG.foilHeight;
-            starboardFoilTarget = 0; // Foil de estribor (barlovento) se levanta
+            // Navegación normal en el agua: ambos abajo
+            portFrontTarget = 1;
+            starboardFrontTarget = 1;
         }
-    } else {
-        // En el agua (despegue o navegación normal): Ambos foils abajo
-        portFoilTarget = CONFIG.foilHeight;
-        starboardFoilTarget = CONFIG.foilHeight;
-    }
-
-    // Aplicar movimiento suave (interpolación) a los foils
-    const foilLerpSpeed = 0.05;
-    const retractDistance = 1.5; // Cuánto sube el foil al retraerse (ajustar según tu modelo 3D)
-
-    if (foilPortMesh) {
-        const targetY = (1 - portFoilTarget) * retractDistance;
-        foilPortMesh.position.y += (targetY - foilPortMesh.position.y) * foilLerpSpeed;
-    }
-    if (foilStarboardMesh) {
-        const targetY = (1 - starboardFoilTarget) * retractDistance;
-        foilStarboardMesh.position.y += (targetY - foilStarboardMesh.position.y) * foilLerpSpeed;
+        
+        const portY = (1 - portFrontTarget) * retractUp;
+        const stbdY = (1 - starboardFrontTarget) * retractUp;
+        
+        // SOLO aplicamos el movimiento a los foils DELANTEROS
+        foilPortFront.position.y += (portY - foilPortFront.position.y) * lerpSpeed;
+        foilStarboardFront.position.y += (stbdY - foilStarboardFront.position.y) * lerpSpeed;
+        
+        // Los foils traseros (foilPortRear y foilStarboardRear) NO se tocan aquí.
+        // Se quedan exactamente en la posición Y que tenían en el archivo 3D original.
     }
     // ==========================================
     
@@ -465,13 +507,3 @@ function clearPracticeTrack() {
     }
 }
 
-function clearPracticeTrack() {
-    if (window.trackBuoys && window.trackBuoys.length > 0) {
-        window.trackBuoys.forEach(buoy => {
-            scene.remove(buoy);
-            if (buoy.geometry) buoy.geometry.dispose();
-            if (buoy.material) buoy.material.dispose();
-        });
-        window.trackBuoys = [];
-    }
-}
