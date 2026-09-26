@@ -122,7 +122,7 @@
         }
 
         /* ========================================== */
-        /* === MENÚS SUPERPUESTOS (PANTALLA 1 Y 2) === */
+        /* === MENÚS SUPERPUESTOS (PANTALLA 1, 2 y 3) === */
         /* ========================================== */
         .menu-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -272,39 +272,35 @@
         }
 
         /* Responsive para móviles */
-        /* ========================================== */
-/* === CORRECCIÓN DE SCROLL PARA MÓVILES === */
-/* ========================================== */
         @media (max-width: 768px) {
-            /* Permitir que el menú completo tenga scroll si es muy alto */
             .menu-overlay {
-                align-items: flex-start; /* Empieza desde arriba para poder bajar */
-                overflow-y: auto; /* Habilita el desplazamiento vertical */
-                -webkit-overflow-scrolling: touch; /* Scroll suave y natural en iPhone/Android */
-                padding: 40px 10px; /* Margen para que no quede pegado a los bordes */
+                align-items: flex-start;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                padding: 40px 10px;
             }
 
             .config-layout {
                 flex-direction: column;
-                height: auto; /* Elimina la altura fija que cortaba el contenido */
+                height: auto;
                 width: 100%;
                 max-width: 400px;
             }
 
             .preview-column {
-                order: -1; /* La vista previa va primero */
+                order: -1;
                 margin-bottom: 20px;
             }
 
             #previewCanvas {
                 width: 100%;
-                max-width: 280px; /* Tamaño perfecto para celular */
+                max-width: 280px;
                 height: auto;
-                aspect-ratio: 1 / 1; /* Mantiene el cuadrado perfecto */
+                aspect-ratio: 1 / 1;
             }
 
             .menu-title {
-                font-size: 26px !important; /* Título más compacto */
+                font-size: 26px !important;
                 margin-bottom: 5px !important;
             }
 
@@ -323,12 +319,12 @@
             }
 
             .color-grid {
-                grid-template-columns: 1fr 1fr; /* Mantiene 2 columnas para los colores */
+                grid-template-columns: 1fr 1fr;
                 gap: 10px;
             }
 
             .menu-btn {
-                padding: 15px 20px; /* Botones un poco más fáciles de tocar */
+                padding: 15px 20px;
             }
         }
 
@@ -364,7 +360,6 @@
             background: rgba(52, 152, 219, 0.5);
             border-color: rgba(52, 152, 219, 0.8);
         }
-
     </style>
     
     <!-- Three.js desde CDN -->
@@ -402,11 +397,10 @@
     </div>
 
     <!-- ========================================== -->
-    <!-- PANTALLA 1: CONFIGURACIÓN DEL BOTE (Layout de 2 columnas) -->
+    <!-- PANTALLA 1: CONFIGURACIÓN DEL BOTE -->
     <!-- ========================================== -->
     <div id="configMenu" class="menu-overlay">
         <div class="config-layout">
-            <!-- COLUMNA IZQUIERDA: Configuración -->
             <div class="config-column">
                 <div class="config-panel-inline">
                     <h1 class="menu-title" style="font-size: 32px; margin-bottom: 5px;">CONFIGURAR</h1>
@@ -466,7 +460,6 @@
                 </div>
             </div>
 
-            <!-- COLUMNA DERECHA: Vista Previa del Barco -->
             <div class="preview-column">
                 <div class="preview-container">
                     <h3 class="preview-title">Vista Previa</h3>
@@ -502,7 +495,8 @@
                     </div>
                 </button>
                 
-                <button class="menu-btn" onclick="startGame('race')">
+                <!-- CAMBIO: Ahora abre el menú de configuración de carrera en lugar de iniciar directamente -->
+                <button class="menu-btn" onclick="showRaceMenu()">
                     <span class="btn-icon">🏆</span>
                     <div>
                         <span class="btn-text">Modo Carrera</span>
@@ -514,6 +508,45 @@
             <button class="menu-btn secondary-btn" onclick="showConfigMenu()">
                 <span class="btn-text">⬅️ Volver a Configuración</span>
             </button>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- PANTALLA 3: CONFIGURACIÓN DE CARRERA (NUEVO) -->
+    <!-- ========================================== -->
+    <div id="raceMenu" class="menu-overlay hidden">
+        <div class="menu-container">
+            <h1 class="menu-title">CONFIGURAR REGATA</h1>
+            <p class="menu-subtitle">Define las condiciones de la competencia</p>
+            
+            <div class="config-panel-inline" style="text-align: left; max-width: 400px; margin: 0 auto 30px auto;">
+                <div class="config-group">
+                    <label>Nivel de Dificultad:</label>
+                    <select id="raceDifficulty" onchange="updateRaceUI()">
+                        <option value="easy">🟢 Fácil (1 rival - Por Tiempo: 5 min)</option>
+                        <option value="intermediate" selected>🟡 Intermedio (3 rivales - Por Vueltas)</option>
+                        <option value="pro">🔴 Pro (5 rivales - Por Vueltas)</option>
+                    </select>
+                </div>
+
+                <div class="config-group" id="raceLapsGroup">
+                    <label>Número de Vueltas:</label>
+                    <select id="raceLaps">
+                        <option value="2">2 Vueltas</option>
+                        <option value="3" selected>3 Vueltas</option>
+                        <option value="5">5 Vueltas</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="menu-buttons" style="max-width: 400px; margin: 0 auto;">
+                <button class="menu-btn primary-btn" onclick="startRace()">
+                    <span class="btn-text">🏁 Iniciar Regata</span>
+                </button>
+                <button class="menu-btn secondary-btn" onclick="showModeMenu()" style="margin-top: 10px;">
+                    <span class="btn-text">⬅️ Volver a Modos de Juego</span>
+                </button>
+            </div
         </div>
     </div>
 
@@ -541,6 +574,44 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Water.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Sky.js"></script>
     <script src="js/renderer3d.js"></script>
+    <script src="js/ai.js"></script> <!-- NUEVO --> 
     <script src="js/main.js"></script>
+
+    <!-- ========================================== -->
+    <!-- LÓGICA DE INTERFAZ DE CARRERA (UI) -->
+    <!-- ========================================== -->
+    <script>
+        // Muestra el menú de configuración de carrera
+        function showRaceMenu() {
+            document.getElementById('modeMenu').classList.add('hidden');
+            document.getElementById('raceMenu').classList.remove('hidden');
+            updateRaceUI(); // Asegura que el estado inicial sea correcto
+        }
+
+        // Muestra u oculta el selector de vueltas según la dificultad
+        function updateRaceUI() {
+            const difficulty = document.getElementById('raceDifficulty').value;
+            const lapsGroup = document.getElementById('raceLapsGroup');
+            
+            if (difficulty === 'easy') {
+                lapsGroup.style.display = 'none'; // Modo fácil es por tiempo, no necesita vueltas
+            } else {
+                lapsGroup.style.display = 'block'; // Intermedio y Pro son por vueltas
+            }
+        }
+
+        // Inicia la carrera guardando la configuración
+        function startRace() {
+            // Guardamos la configuración de la carrera en un objeto global para que main.js y ai.js lo lean
+            window.RACE_CONFIG = {
+                difficulty: document.getElementById('raceDifficulty').value,
+                laps: parseInt(document.getElementById('raceLaps').value),
+                timeLimit: 300 // 5 minutos en segundos (para modo fácil)
+            };
+            
+            // Iniciamos el juego en modo carrera
+            startGame('race');
+        }
+    </script>
 </body>
 </html>

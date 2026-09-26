@@ -19,6 +19,26 @@ let gameState = {
 
 // === SISTEMA DE MENÚ DE 2 PANTALLAS ===
 let currentGameMode = null; // 'learning', 'practice', 'race'
+
+// === ESTADO DE CARRERA ===
+let raceState = {
+    isActive: false,
+    startTime: 0,
+    elapsedTime: 0,
+    currentLap: 0,
+    totalLaps: 3,
+    nextBuoyIndex: 0,
+    isFinished: false
+};
+
+// Orden del circuito olímpico: Salida -> Barlovento -> Sotavento 1 -> Sotavento 2 -> Meta
+const RACE_CIRCUIT = [
+    { name: "Línea de Salida", x: 0, z: 600, radius: 60 },
+    { name: "Boya Barlovento", x: 0, z: -800, radius: 40 },
+    { name: "Boya Sotavento 1", x: 600, z: 600, radius: 40 },
+    { name: "Boya Sotavento 2", x: -600, z: 600, radius: 40 }
+];
+
 // === CONTROL DEL HUD ===
 let hudVisible = true; // Por defecto el HUD está visible
 
@@ -84,21 +104,28 @@ function startGame(mode) {
     
     const configMenu = document.getElementById('configMenu');
     const modeMenu = document.getElementById('modeMenu');
+    const raceMenu = document.getElementById('raceMenu');
     const backBtn = document.getElementById('backToMenuBtn');
     
     if (configMenu) configMenu.classList.add('hidden');
     if (modeMenu) modeMenu.classList.add('hidden');
-    if (mode === 'practice') {
-        if (typeof createPracticeTrack === 'function') createPracticeTrack();
-    }
+    if (raceMenu) raceMenu.classList.add('hidden');
     if (backBtn) backBtn.classList.add('visible');
 
     const hudBtn = document.getElementById('toggleHudBtn');
-    if (hudBtn) hudBtn.classList.add('visible');
-    hudVisible = true; // HUD visible al empezar
-    const hudBtn2 = document.getElementById('toggleHudBtn');
-    if (hudBtn2) hudBtn2.classList.add('active');
+    if (hudBtn) {
+        hudBtn.classList.add('visible');
+        hudBtn.classList.add('active');
+    }
+    hudVisible = true;
     
+    // Resetear estado de carrera
+    raceState.isActive = false;
+    raceState.isFinished = false;
+    raceState.currentLap = 0;
+    raceState.nextBuoyIndex = 0;
+    raceState.elapsedTime = 0;
+
     console.log(`🚀 ¡Juego iniciado en modo: ${mode}!`);
     
     switch(mode) {
@@ -107,9 +134,24 @@ function startGame(mode) {
             break;
         case 'practice':
             console.log('🎯 Modo Práctica: Cargando pista con boyas...');
+            if (typeof createPracticeTrack === 'function') createPracticeTrack();
             break;
         case 'race':
             console.log('🏆 Modo Carrera: Preparando competidores...');
+            if (typeof createRaceTrack === 'function') createRaceTrack();
+            
+            // Inicializar flota de IA
+            if (window.RACE_CONFIG && typeof initAIFleet === 'function') {
+                initAIFleet(window.RACE_CONFIG.difficulty);
+            }
+            
+            raceState.isActive = true;
+            raceState.startTime = Date.now();
+            
+            if (window.RACE_CONFIG) {
+                raceState.totalLaps = window.RACE_CONFIG.laps || 3;
+                console.log(`⚙️ Configuración: ${window.RACE_CONFIG.difficulty}, ${raceState.totalLaps} vueltas`);
+            }
             break;
     }
 }
@@ -281,27 +323,89 @@ function executeCrewAction(joyX, joyY) {
     }
 }
 
+// === DETECCIÓN DE PASADA DE BOYAS ===
+function checkBuoyPassage() {
+    if (!raceState.isActive || raceState.isFinished) return;
+
+    const targetBuoy = RACE_CIRCUIT[raceState.nextBuoyIndex];
+    if (!targetBuoy) return;
+
+    // Calcular distancia entre el barco y la boya objetivo
+    const dx = CONFIG.boatX - targetBuoy.x;
+    const dz = CONFIG.boatZ - targetBuoy.z;
+    const distance = Math.sqrt(dx * dx + dz * dz);
+
+    if (distance <= targetBuoy.radius) {
+        console.log(`✅ ¡Boya pasada: ${targetBuoy.name}!`);
+        raceState.nextBuoyIndex++;
+        
+        // Si completó el circuito (llegó a la meta/línea de salida)
+        if (raceState.nextBuoyIndex >= RACE_CIRCUIT.length) {
+            raceState.currentLap++;
+            raceState.nextBuoyIndex = 0; // Reiniciar para la siguiente vuelta
+            
+            console.log(`🏁 ¡Vuelta ${raceState.currentLap} completada!`);
+            
+            if (raceState.currentLap >= raceState.totalLaps) {
+                raceState.isFinished = true;
+                raceState.isActive = false;
+                const finalTime = (raceState.elapsedTime / 1000).toFixed(1);
+                console.log(`🏆 ¡CARRERA TERMINADA! Tiempo total: ${finalTime}s`);
+                // Aquí podríamos mostrar un modal de resultados en el futuro
+            }
+        }
+    }
+}
+
+// === CREAR PISTA DE CARRERA ===
+function createRaceTrack() {
+    if (typeof clearPracticeTrack === 'function') clearPracticeTrack();
+    
+    if (typeof scene !== 'undefined' && typeof THREE !== 'undefined') {
+        const cylinderGeo = new THREE.CylinderGeometry(4, 4, 20, 16);
+        const sphereGeo = new THREE.SphereGeometry(4.5, 16, 16);
+        
+        RACE_CIRCUIT.forEach((mark, index) => {
+            const color = index === 0 ? 0xff0000 : (index === 1 ? 0xffaa00 : 0xff0000);
+            const material = new THREE.MeshPhongMaterial({ color: color, shininess: 80 });
+            const buoy = new THREE.Mesh(cylinderGeo, material);
+            
+            buoy.position.set(mark.x, 10, mark.z);
+            buoy.userData = { name: mark.name, radius: mark.radius, id: index };
+            
+            const topMesh = new THREE.Mesh(sphereGeo, material);
+            topMesh.position.y = 10;
+            buoy.add(topMesh);
+            
+            scene.add(buoy);
+            window.trackBuoys.push(buoy);
+        });
+        console.log('🏁 Pista de carrera creada con ' + window.trackBuoys.length + ' boyas');
+    }
+}
+
 // --- RENDERIZADO PRINCIPAL ---
 function render() {
-    // 1. Renderizar 3D
     if (typeof update3DScene === 'function' && typeof renderer !== 'undefined') {
         update3DScene();
         renderer.render(scene, camera);
     }
 
-    // 2. Limpiar canvas 2D
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // 3. Dibujar HUD COMPACTO (solo si está visible)
     if (hudVisible) {
         if (typeof drawCompactHUD === 'function') drawCompactHUD();
+        
+        // Dibujar HUD de carrera si está activo
+        if (currentGameMode === 'race') {
+            drawRaceHUD();
+        }
     }
     
-    // 4. Efectos especiales (Flash de trasluchada)
     if (typeof drawGybeCrackFlash === 'function') drawGybeCrackFlash();
     
-    // 5. Dibujar Minimapa SIEMPRE VISIBLE (en modo práctica)
-    if (currentGameMode === 'practice' && typeof drawMinimap === 'function') {
+    // Mostrar minimapa en práctica Y en carrera
+    if ((currentGameMode === 'practice' || currentGameMode === 'race') && typeof drawMinimap === 'function') {
         drawMinimap();
     }
 }
@@ -312,9 +416,19 @@ function gameLoop(timestamp) {
 
     handleInput();
     
-    // Solo actualizar física si estamos en un modo de juego activo
     if (currentGameMode !== null && typeof updateBoatSpeed === 'function') {
         updateBoatSpeed();
+    }
+    
+        // Actualizar estado de carrera
+    if (raceState.isActive && !raceState.isFinished) {
+        raceState.elapsedTime = Date.now() - raceState.startTime;
+        checkBuoyPassage();
+        
+        // NUEVO: Actualizar IA
+        if (typeof updateAI === 'function') {
+            updateAI();
+        }
     }
     
     render();
@@ -476,7 +590,7 @@ function drawHUD() {
     ctx.fillText('↑↓ Jugador | ←→ Casco | WASD Acción | J = Jib', canvas.width / 2, canvas.height - 10);
 }
 
-// === MINIMAPA 2D (Corregido: solo eje X invertido) ===
+// === MINIMAPA 2D (Con rivales y boya objetivo resaltada) ===
 function drawMinimap() {
     const mapWidth = 200;
     const mapHeight = 100;
@@ -531,29 +645,67 @@ function drawMinimap() {
     
     ctx.save();
     ctx.translate(mapX + mapWidth / 2, mapY + mapHeight / 2);
-    ctx.scale(-1, 1); // VOLTEAR HORIZONTALMENTE (modo espejo corregido)
+    ctx.scale(-1, 1); // VOLTEAR HORIZONTALMENTE
     
-    // Boyas (SOLO EJE X INVERTIDO)
-    
-    // Boyas (SOLO EJE X INVERTIDO)
+    // Boyas (CON RESALTADO DE LA OBJETIVO)
     if (typeof window.trackBuoys !== 'undefined' && window.trackBuoys.length > 0) {
         window.trackBuoys.forEach(buoy => {
-            const bx = -buoy.position.x * scale; // X invertido
-            const bz = buoy.position.z * scale;  // Z normal
+            const bx = -buoy.position.x * scale;
+            const bz = buoy.position.z * scale;
             
-            ctx.fillStyle = '#ffaa00';
+            let isTarget = false;
+            if (currentGameMode === 'race' && raceState.isActive && !raceState.isFinished) {
+                if (buoy.userData.id === raceState.nextBuoyIndex) {
+                    isTarget = true;
+                }
+            }
+            
+            ctx.fillStyle = isTarget ? '#00ff00' : (buoy.userData.name.includes('Barlovento') ? '#ffaa00' : '#ff0000');
+            const radius = isTarget ? 6 : 4;
+            const lineWidth = isTarget ? 2.5 : 1;
+            
             ctx.beginPath();
-            ctx.arc(bx, bz, 4, 0, Math.PI * 2);
+            ctx.arc(bx, bz, radius, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = isTarget ? '#ffffff' : 'rgba(255, 255, 255, 0.7)';
+            ctx.lineWidth = lineWidth;
             ctx.stroke();
         });
     }
     
-    // Barco (SOLO EJE X INVERTIDO)
-    const boatX = (typeof CONFIG !== 'undefined') ? -CONFIG.boatX : 0; // X invertido
-    const boatZ = (typeof CONFIG !== 'undefined') ? CONFIG.boatZ : 0; // Z normal
+    // NUEVO: Dibujar barcos IA (rivales)
+    if (typeof getAIBoatPositions === 'function') {
+        const aiPositions = getAIBoatPositions();
+        aiPositions.forEach(aiBoat => {
+            const aiX = -aiBoat.x * scale; // X invertido
+            const aiZ = aiBoat.z * scale;  // Z normal
+            
+            ctx.save();
+            ctx.translate(aiX, aiZ);
+            ctx.rotate(degToRad(aiBoat.heading));
+            
+            // Triángulo del rival con color de personalidad
+            const colorHex = '#' + aiBoat.color.toString(16).padStart(6, '0');
+            ctx.fillStyle = colorHex;
+            ctx.beginPath();
+            ctx.moveTo(0, -5);
+            ctx.lineTo(-3, 4);
+            ctx.lineTo(3, 4);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Borde blanco para distinguir
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            
+            ctx.restore();
+        });
+    }
+    
+    // Barco del jugador (SIEMPRE ROJO, más grande para destacar)
+    const boatX = (typeof CONFIG !== 'undefined') ? -CONFIG.boatX : 0;
+    const boatZ = (typeof CONFIG !== 'undefined') ? CONFIG.boatZ : 0;
     const boatHeading = (typeof CONFIG !== 'undefined') ? CONFIG.boatHeading : 0;
 
     const boatMapX = boatX * scale;
@@ -561,21 +713,19 @@ function drawMinimap() {
     
     ctx.save();
     ctx.translate(boatMapX, boatMapZ);
-    ctx.rotate(degToRad(boatHeading)); // Rotación normal (no invertida)
+    ctx.rotate(degToRad(boatHeading));
     
+    // Jugador más grande y con borde más grueso
     ctx.fillStyle = '#e74c3c';
     ctx.beginPath();
-    ctx.moveTo(0, -5);
-    ctx.lineTo(-3, 4);
-    ctx.lineTo(3, 4);
+    ctx.moveTo(0, -6);
+    ctx.lineTo(-4, 5);
+    ctx.lineTo(4, 5);
     ctx.closePath();
     ctx.fill();
     
-    ctx.strokeStyle = 'white';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, -5);
-    ctx.lineTo(0, -12);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
     ctx.stroke();
     
     ctx.restore();
@@ -752,6 +902,44 @@ function drawGybeCrackFlash() {
     ctx.fillText('¡CRACK!', canvas.width / 2, canvas.height / 2);
     CONFIG.gybeCrackFlash -= 0.05;
     if (CONFIG.gybeCrackFlash < 0) CONFIG.gybeCrackFlash = 0;
+}
+
+// === HUD ESPECÍFICO DE CARRERA ===
+function drawRaceHUD() {
+    const x = 20;
+    const y = 110; // Justo debajo del HUD compacto
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(x, y, 240, 95);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, 240, 95);
+    
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 14px Arial';
+    ctx.textAlign = 'left';
+    
+    // Vueltas
+    const lapText = raceState.isFinished ? '🏁 FINALIZADO' : `VUELTA: ${raceState.currentLap + 1} / ${raceState.totalLaps}`;
+    ctx.fillText(lapText, x + 15, y + 25);
+    
+    // Próxima boya
+    let nextBuoyName = "META";
+    if (!raceState.isFinished && raceState.nextBuoyIndex < RACE_CIRCUIT.length) {
+        nextBuoyName = RACE_CIRCUIT[raceState.nextBuoyIndex].name;
+    }
+    ctx.fillStyle = '#f39c12';
+    ctx.fillText(`PRÓXIMA: ${nextBuoyName}`, x + 15, y + 50);
+    
+    // Tiempo
+    const totalSeconds = Math.floor(raceState.elapsedTime / 1000);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    
+    ctx.fillStyle = '#2ecc71';
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText(`TIEMPO: ${timeStr}`, x + 15, y + 80);
 }
 
 // === VISTA PREVIA DEL BARCO (Canvas 2D simplificado) ===
