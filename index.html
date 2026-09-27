@@ -546,7 +546,7 @@
                 <button class="menu-btn secondary-btn" onclick="showModeMenu()" style="margin-top: 10px;">
                     <span class="btn-text">⬅️ Volver a Modos de Juego</span>
                 </button>
-            </div
+            </div>
         </div>
     </div>
 
@@ -576,6 +576,56 @@
     <script src="js/renderer3d.js"></script>
     <script src="js/ai.js"></script> <!-- NUEVO --> 
     <script src="js/main.js"></script>
+
+    <!-- ========================================== -->
+    <!-- PANTALLA 4: RESULTADOS DE LA REGATA -->
+    <!-- ========================================== -->
+    <div id="resultsMenu" class="menu-overlay hidden">
+        <div class="menu-container" style="max-width: 700px;">
+            <h1 class="menu-title">🏆 RESULTADOS DE LA REGATA</h1>
+            
+            <!-- PODIO -->
+            <div style="display: flex; justify-content: center; align-items: flex-end; gap: 20px; margin: 30px 0; height: 200px;">
+                <!-- 2do Lugar -->
+                <div style="text-align: center;">
+                    <div style="font-size: 40px;">🥈</div>
+                    <div id="podium2Name" style="color: #bdc3c7; font-weight: bold; font-size: 14px;">---</div>
+                    <div id="podium2Time" style="color: white; font-size: 12px;">--:--</div>
+                    <div style="width: 80px; height: 100px; background: #bdc3c7; border-radius: 8px 8px 0 0; margin-top: 10px;"></div>
+                </div>
+                <!-- 1er Lugar -->
+                <div style="text-align: center;">
+                    <div style="font-size: 50px;">🥇</div>
+                    <div id="podium1Name" style="color: #f1c40f; font-weight: bold; font-size: 16px;">---</div>
+                    <div id="podium1Time" style="color: white; font-size: 12px;">--:--</div>
+                    <div style="width: 100px; height: 140px; background: #f1c40f; border-radius: 8px 8px 0 0; margin-top: 10px;"></div>
+                </div>
+                <!-- 3er Lugar -->
+                <div style="text-align: center;">
+                    <div style="font-size: 40px;">🥉</div>
+                    <div id="podium3Name" style="color: #cd7f32; font-weight: bold; font-size: 14px;">---</div>
+                    <div id="podium3Time" style="color: white; font-size: 12px;">--:--</div>
+                    <div style="width: 80px; height: 70px; background: #cd7f32; border-radius: 8px 8px 0 0; margin-top: 10px;"></div>
+                </div>
+            </div>
+
+            <!-- ESTADÍSTICAS DEL JUGADOR -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: rgba(255,255,255,0.1); padding: 20px; border-radius: 12px; margin-bottom: 30px;">
+                <div style="text-align: center;">
+                    <div style="color: #aaa; font-size: 14px; margin-bottom: 5px;">VELOCIDAD MÁXIMA</div>
+                    <div id="statMaxSpeed" style="color: #2ecc71; font-size: 32px; font-weight: bold;">0.0 kn</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="color: #aaa; font-size: 14px; margin-bottom: 5px;">MEJOR VUELTA</div>
+                    <div id="statBestLap" style="color: #3498db; font-size: 32px; font-weight: bold;">--:--</div>
+                </div>
+            </div>
+
+            <button class="menu-btn primary-btn" onclick="showConfigMenu()">
+                <span class="btn-text">🏠 Volver al Menú Principal</span>
+            </button>
+        </div>
+    </div>
 
     <!-- ========================================== -->
     <!-- LÓGICA DE INTERFAZ DE CARRERA (UI) -->

@@ -70,6 +70,9 @@ function createABoat(personality, id) {
         nextBuoyIndex: 0,
         isManeuvering: false,
         maneuverTimer: 0,
+        finishTime: 0,         // NUEVO
+        bestLapTime: Infinity, // NUEVO
+        lapStartTime: 0,       // NUEVO
         
         // Mesh 3D (se creará después)
         mesh: null,
@@ -78,7 +81,9 @@ function createABoat(personality, id) {
         targetHeading: 0,
         sailTrim: 0,
         foilHeight: 0,
-        lastDecisionTime: 0
+        lastDecisionTime: 0,
+        trail: [],        // NUEVO: Historial de posiciones
+        lastTrailTime: 0  // NUEVO: Temporizador para la estela
     };
     
     return aiBoat;
@@ -111,10 +116,11 @@ function initAIFleet(difficulty) {
         const aiBoat = createABoat(personality, i);
         
         // Posicionar en la línea de salida con separación
-        aiBoat.x = -50 + (i * 25);
+        aiBoat.x = -100 + (i * 50);
         aiBoat.z = 600;
-        aiBoat.heading = 0;
-        
+        aiBoat.heading = 180;
+        aiBoat.nextBuoyIndex = 1; // <-- CAMBIADO: La IA también busca Barlovento primero
+
         window.aiBoats.push(aiBoat);
     }
     
@@ -248,10 +254,27 @@ function createABoatMeshes() {
 // === ACTUALIZAR LÓGICA DE IA ===
 function updateAI() {
     if (!raceState.isActive || raceState.isFinished) return;
+
+    if (!raceState.raceStarted) return;
     
     const currentTime = Date.now();
     
-        window.aiBoats.forEach(aiBoat => {
+    window.aiBoats.forEach(aiBoat => {
+        // Inicializar el cronómetro de vuelta de la IA si aún no ha empezado
+        if (aiBoat.lapStartTime === 0) {
+            aiBoat.lapStartTime = raceState.startTime;
+        }
+
+        // NUEVO: Registrar posición para la estela cada 500ms (0.5 segundos)
+        if (currentTime - aiBoat.lastTrailTime > 500) {
+            aiBoat.trail.push({ x: aiBoat.x, z: aiBoat.z });
+            // Mantener solo los últimos 40 puntos (aprox. 20 segundos de historial)
+            if (aiBoat.trail.length > 40) {
+                aiBoat.trail.shift();
+            }
+            aiBoat.lastTrailTime = currentTime;
+        }
+
         // Tomar decisiones cada 100ms (10 veces por segundo)
         if (currentTime - aiBoat.lastDecisionTime > 100) {
             makeAIDecisions(aiBoat);
@@ -273,7 +296,7 @@ function updateAI() {
         }
     });
     
-    // NUEVO: Manejar colisiones entre todos los barcos
+    // Manejar colisiones entre todos los barcos
     handleAICollisions();
 }
 
@@ -329,43 +352,75 @@ function handleAICollisions() {
     }
 }
 
-// === TOMAR DECISIONES DE IA ===
+// === TOMAR DECISIONES DE IA (Lógica de Zigzag Corregida) ===
 function makeAIDecisions(aiBoat) {
-    const targetBuoy = RACE_CIRCUIT[aiBoat.nextBuoyIndex];
-    if (!targetBuoy) return;
+    let targetBuoy;
+    if (aiBoat.nextBuoyIndex < RACE_CIRCUIT.length) {
+        targetBuoy = RACE_CIRCUIT[aiBoat.nextBuoyIndex];
+    } else {
+        targetBuoy = { x: 0, z: 600, radius: 60, name: "Meta" };
+    }
     
-    // Calcular ángulo hacia la boya objetivo
+    // Calcular ángulo hacia el objetivo
     const dx = targetBuoy.x - aiBoat.x;
     const dz = targetBuoy.z - aiBoat.z;
-    const targetAngle = Math.atan2(dx, dz) * (180 / Math.PI);
+    const targetAngle = normalizeAngle(Math.atan2(dx, dz) * (180 / Math.PI));
     
-    // Normalizar ángulo
-    aiBoat.targetHeading = normalizeAngle(targetAngle);
+    // === LÓGICA INFALIBLE DE VIENTO ===
+    // Calculamos la diferencia absoluta entre la dirección del viento y hacia dónde queremos ir
+    let angleDiff = Math.abs(normalizeAngle(CONFIG.trueWindDirection - targetAngle));
+    if (angleDiff > 180) angleDiff = 360 - angleDiff; // Obtener el ángulo más corto
     
-    // Calcular diferencia de rumbo
+    // Si la diferencia es menor a 45°, vamos DIRECTO CONTRA EL VIENTO (Proa)
+    if (angleDiff < 45) {
+        // ZIG-ZAG: Navegar en ceñida (45° respecto al viento)
+        if (aiBoat.currentTack === undefined) {
+            aiBoat.currentTack = Math.random() < 0.5 ? 'port' : 'starboard';
+            aiBoat.tackTimer = 0;
+        }
+        
+        aiBoat.tackTimer++;
+        const distanceToBuoy = Math.sqrt(dx * dx + dz * dz);
+        const shouldTack = aiBoat.tackTimer > 900 || distanceToBuoy < 200;
+        
+        if (shouldTack) {
+            aiBoat.currentTack = aiBoat.currentTack === 'port' ? 'starboard' : 'port';
+            aiBoat.tackTimer = 0;
+            console.log(`🔄 [${aiBoat.personalityData.name}] Virada en ceñida (Contra el viento)`);
+        }
+        
+        let tackAngle;
+        if (aiBoat.currentTack === 'port') {
+            tackAngle = normalizeAngle(CONFIG.trueWindDirection + 45);
+        } else {
+            tackAngle = normalizeAngle(CONFIG.trueWindDirection - 45);
+        }
+        aiBoat.targetHeading = tackAngle;
+        
+    } else {
+        // Navegación normal (Través o Popa): Apuntar directo a la boya
+        aiBoat.targetHeading = targetAngle;
+        aiBoat.currentTack = undefined; // Resetear estado de ceñida
+    }
+    
+    // Calcular diferencia de rumbo para girar suavemente
     let headingDiff = aiBoat.targetHeading - aiBoat.heading;
     if (headingDiff > 180) headingDiff -= 360;
     if (headingDiff < -180) headingDiff += 360;
     
-    // Decidir si necesita virar o trasluchar
     const absDiff = Math.abs(headingDiff);
-    
     if (absDiff > 90 && !aiBoat.isManeuvering) {
-        // Necesita cambiar de amura
         if (absDiff < 150) {
-            // Traslu
             aiBoat.isManeuvering = true;
-            aiBoat.maneuverTimer = 120; // 2 segundos
+            aiBoat.maneuverTimer = 120;
         } else {
-            // Virada
             aiBoat.isManeuvering = true;
-            aiBoat.maneuverTimer = 180; // 3 segundos
+            aiBoat.maneuverTimer = 180;
         }
     }
     
     // Simular errores según personalidad
     if (Math.random() < aiBoat.personalityData.errorRate) {
-        // Error: gira en dirección equivocada por un momento
         aiBoat.targetHeading += (Math.random() - 0.5) * 60;
     }
 }
@@ -434,39 +489,71 @@ function updateAIPhysics(aiBoat, currentTime) {
 }
 
 // === CALCULAR VELOCIDAD DE IA ===
+// === CALCULAR VELOCIDAD DE IA ===
 function calculateAISpeed(windAngle) {
     // Tabla polar simplificada para IA
     const normAngle = windAngle > 180 ? 360 - windAngle : windAngle;
     
-    if (normAngle < 30) return 5; // Zona muerta
-    if (normAngle < 60) return 20; // Ceñida
-    if (normAngle < 120) return 30; // Través (más rápido)
-    if (normAngle < 150) return 25; // Largo
-    return 15; // Popa
+    let targetSpeed = 15; // Valor por defecto (Popa)
     
-    // Limitar según condición de viento
+    if (normAngle < 30) targetSpeed = 5;       // Zona muerta
+    else if (normAngle < 60) targetSpeed = 20; // Ceñida
+    else if (normAngle < 120) targetSpeed = 30;// Través (más rápido)
+    else if (normAngle < 150) targetSpeed = 25;// Largo
+    
+    // Limitar según condición de viento (Ahora esto SÍ se ejecuta)
     if (CONFIG.windCondition === 'light') return Math.min(targetSpeed, 22);
     if (CONFIG.windCondition === 'intermediate') return Math.min(targetSpeed, 35);
+    
     return Math.min(targetSpeed, 45);
 }
 
-// === VERIFICAR PASADA DE BOYAS PARA IA ===
+// === VERIFICAR PASADA DE BOYAS Y META PARA IA ===
 function checkAIBuoyPassage(aiBoat) {
-    const targetBuoy = RACE_CIRCUIT[aiBoat.nextBuoyIndex];
-    if (!targetBuoy) return;
+    let targetX, targetZ, targetRadius;
     
-    const dx = aiBoat.x - targetBuoy.x;
-    const dz = aiBoat.z - targetBuoy.z;
+    if (aiBoat.nextBuoyIndex < RACE_CIRCUIT.length) {
+        const target = RACE_CIRCUIT[aiBoat.nextBuoyIndex];
+        targetX = target.x;
+        targetZ = target.z;
+        targetRadius = target.radius;
+    } else {
+        targetX = 0;
+        targetZ = 600;
+        targetRadius = 60;
+    }
+    
+    const dx = aiBoat.x - targetX;
+    const dz = aiBoat.z - targetZ;
     const distance = Math.sqrt(dx * dx + dz * dz);
     
-    if (distance <= targetBuoy.radius) {
-        console.log(`🤖 [${aiBoat.personalityData.name}] Pasó boya: ${targetBuoy.name}`);
-        aiBoat.nextBuoyIndex++;
+    if (distance <= targetRadius) {
+        const passedName = aiBoat.nextBuoyIndex < RACE_CIRCUIT.length ? RACE_CIRCUIT[aiBoat.nextBuoyIndex].name : "Meta";
+        console.log(`🤖 [${aiBoat.personalityData.name}] Pasó: ${passedName}`);
         
-        if (aiBoat.nextBuoyIndex >= RACE_CIRCUIT.length) {
+        if (aiBoat.nextBuoyIndex < RACE_CIRCUIT.length - 1) {
+            aiBoat.nextBuoyIndex++;
+        } else if (aiBoat.nextBuoyIndex === RACE_CIRCUIT.length - 1) {
+            aiBoat.nextBuoyIndex++; // Ahora es 4 (Meta)
+        } else {
+            // ¡La IA cruzó la Meta!
+            const now = Date.now();
+            if (aiBoat.lapStartTime > 0) {
+                const lapTime = (now - aiBoat.lapStartTime) / 1000;
+                if (lapTime < aiBoat.bestLapTime) {
+                    aiBoat.bestLapTime = lapTime;
+                }
+            }
+            
             aiBoat.currentLap++;
-            aiBoat.nextBuoyIndex = 0;
-            console.log(`🏁 [${aiBoat.personalityData.name}] Vuelta ${aiBoat.currentLap} completada`);
+            
+            if (aiBoat.currentLap >= raceState.totalLaps && aiBoat.finishTime === 0) {
+                aiBoat.finishTime = (now - raceState.startTime) / 1000;
+                console.log(`🏁 [${aiBoat.personalityData.name}] terminó en ${formatTime(aiBoat.finishTime)}`);
+            } else {
+                aiBoat.nextBuoyIndex = 1; // Siguiente vuelta
+                aiBoat.lapStartTime = now;
+            }
         }
     }
 }

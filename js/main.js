@@ -28,7 +28,15 @@ let raceState = {
     currentLap: 0,
     totalLaps: 3,
     nextBuoyIndex: 0,
-    isFinished: false
+    isFinished: false,
+    countdown: 0,
+    countdownStartTime: 0,
+    raceStarted: false,
+    // NUEVAS VARIABLES DE ESTADÍSTICAS
+    maxSpeed: 0,
+    lapStartTime: 0,
+    bestLapTime: Infinity,
+    playerFinishTime: 0
 };
 
 // Orden del circuito olímpico: Salida -> Barlovento -> Sotavento 1 -> Sotavento 2 -> Meta
@@ -123,7 +131,7 @@ function startGame(mode) {
     raceState.isActive = false;
     raceState.isFinished = false;
     raceState.currentLap = 0;
-    raceState.nextBuoyIndex = 0;
+    raceState.nextBuoyIndex = 1;
     raceState.elapsedTime = 0;
 
     console.log(`🚀 ¡Juego iniciado en modo: ${mode}!`);
@@ -136,17 +144,29 @@ function startGame(mode) {
             console.log('🎯 Modo Práctica: Cargando pista con boyas...');
             if (typeof createPracticeTrack === 'function') createPracticeTrack();
             break;
-        case 'race':
+                case 'race':
             console.log('🏆 Modo Carrera: Preparando competidores...');
             if (typeof createRaceTrack === 'function') createRaceTrack();
             
-            // Inicializar flota de IA
             if (window.RACE_CONFIG && typeof initAIFleet === 'function') {
                 initAIFleet(window.RACE_CONFIG.difficulty);
             }
             
+            CONFIG.boatX = 0;
+            CONFIG.boatZ = 600;
+            CONFIG.boatHeading = 180;
+            CONFIG.boatSpeed = 0;
+            
+            // REINICIAR ESTADÍSTICAS
+            raceState.maxSpeed = 0;
+            raceState.bestLapTime = Infinity;
+            raceState.lapStartTime = 0;
+            raceState.playerFinishTime = 0;
+            
+            raceState.countdown = 5;
+            raceState.countdownStartTime = Date.now();
+            raceState.raceStarted = false;
             raceState.isActive = true;
-            raceState.startTime = Date.now();
             
             if (window.RACE_CONFIG) {
                 raceState.totalLaps = window.RACE_CONFIG.laps || 3;
@@ -323,35 +343,68 @@ function executeCrewAction(joyX, joyY) {
     }
 }
 
-// === DETECCIÓN DE PASADA DE BOYAS ===
+// === DETECCIÓN DE PASADA DE BOYAS Y META ===
 function checkBuoyPassage() {
     if (!raceState.isActive || raceState.isFinished) return;
 
-    const targetBuoy = RACE_CIRCUIT[raceState.nextBuoyIndex];
-    if (!targetBuoy) return;
+    let targetX, targetZ, targetRadius, targetName;
+    
+    // Determinar el objetivo actual
+    if (raceState.nextBuoyIndex < RACE_CIRCUIT.length) {
+        const target = RACE_CIRCUIT[raceState.nextBuoyIndex];
+        targetX = target.x;
+        targetZ = target.z;
+        targetRadius = target.radius;
+        targetName = target.name;
+    } else {
+        // Si ya pasó la última boya, el objetivo es la Línea de Meta
+        targetX = 0;
+        targetZ = 600;
+        targetRadius = 60; 
+        targetName = "Línea de Meta";
+    }
 
-    // Calcular distancia entre el barco y la boya objetivo
-    const dx = CONFIG.boatX - targetBuoy.x;
-    const dz = CONFIG.boatZ - targetBuoy.z;
+    const dx = CONFIG.boatX - targetX;
+    const dz = CONFIG.boatZ - targetZ;
     const distance = Math.sqrt(dx * dx + dz * dz);
 
-    if (distance <= targetBuoy.radius) {
-        console.log(`✅ ¡Boya pasada: ${targetBuoy.name}!`);
-        raceState.nextBuoyIndex++;
+    if (distance <= targetRadius) {
+        console.log(`✅ ¡Pasado: ${targetName}!`);
         
-        // Si completó el circuito (llegó a la meta/línea de salida)
-        if (raceState.nextBuoyIndex >= RACE_CIRCUIT.length) {
-            raceState.currentLap++;
-            raceState.nextBuoyIndex = 0; // Reiniciar para la siguiente vuelta
+        if (raceState.nextBuoyIndex < RACE_CIRCUIT.length - 1) {
+            // Avanzar a la siguiente boya normal
+            raceState.nextBuoyIndex++;
+        } else if (raceState.nextBuoyIndex === RACE_CIRCUIT.length - 1) {
+            // Acaba de pasar la última boya, ahora debe ir a la Meta
+            raceState.nextBuoyIndex++; // Se convierte en 4
+        } else {
+            // ¡Acaba de cruzar la Línea de Meta!
+            const now = Date.now();
             
+            if (raceState.lapStartTime > 0) {
+                const lapTime = (now - raceState.lapStartTime) / 1000;
+                if (lapTime < raceState.bestLapTime) {
+                    raceState.bestLapTime = lapTime;
+                }
+            }
+            
+            raceState.currentLap++;
             console.log(`🏁 ¡Vuelta ${raceState.currentLap} completada!`);
             
             if (raceState.currentLap >= raceState.totalLaps) {
                 raceState.isFinished = true;
-                raceState.isActive = false;
-                const finalTime = (raceState.elapsedTime / 1000).toFixed(1);
-                console.log(`🏆 ¡CARRERA TERMINADA! Tiempo total: ${finalTime}s`);
-                // Aquí podríamos mostrar un modal de resultados en el futuro
+                raceState.isActive = false; // DETIENE EL SIMULADOR
+                raceState.playerFinishTime = (now - raceState.startTime) / 1000;
+                
+                console.log("🏆 ¡CARRERA TERMINADA! Activando pantalla de resultados en 0.5s...");
+                // Pequeña pausa para que el jugador vea que cruzó la línea antes de que salte el menú
+                setTimeout(() => {
+                    showRaceResults();
+                }, 500);
+                return; // Salir inmediatamente
+            } else {
+                raceState.nextBuoyIndex = 1; 
+                raceState.lapStartTime = now;
             }
         }
     }
@@ -380,9 +433,22 @@ function createRaceTrack() {
             scene.add(buoy);
             window.trackBuoys.push(buoy);
         });
-        console.log('🏁 Pista de carrera creada con ' + window.trackBuoys.length + ' boyas');
+
+        // === DIBUJAR LÍNEA DE META/SALIDA EN 3D ===
+        const lineGeo = new THREE.BoxGeometry(600, 0.2, 2);
+        const lineMat = new THREE.MeshBasicMaterial({ 
+            color: 0xffffff, 
+            transparent: true, 
+            opacity: 0.6 
+        });
+        const finishLine3D = new THREE.Mesh(lineGeo, lineMat);
+        finishLine3D.position.set(0, 0.1, 600);
+        scene.add(finishLine3D);
+        
+        console.log('🏁 Pista de carrera creada con ' + window.trackBuoys.length + ' boyas y línea de meta 3D');
     }
 }
+
 
 // --- RENDERIZADO PRINCIPAL ---
 function render() {
@@ -392,6 +458,11 @@ function render() {
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // NUEVO: Dibujar cuenta regresiva si está activa
+    if (raceState.isActive && !raceState.raceStarted) {
+        drawCountdown();
+    }    
     
     if (hudVisible) {
         if (typeof drawCompactHUD === 'function') drawCompactHUD();
@@ -411,6 +482,7 @@ function render() {
 }
 
 // --- LOOP PRINCIPAL ---
+// --- LOOP PRINCIPAL ---
 function gameLoop(timestamp) {
     if (!gameState.running) return;
 
@@ -420,14 +492,33 @@ function gameLoop(timestamp) {
         updateBoatSpeed();
     }
     
-        // Actualizar estado de carrera
-    if (raceState.isActive && !raceState.isFinished) {
-        raceState.elapsedTime = Date.now() - raceState.startTime;
-        checkBuoyPassage();
-        
-        // NUEVO: Actualizar IA
-        if (typeof updateAI === 'function') {
-            updateAI();
+    // Actualizar estado de carrera
+    if (raceState.isActive) {
+        if (!raceState.raceStarted) {
+            const elapsed = (Date.now() - raceState.countdownStartTime) / 1000;
+            const remaining = Math.ceil(5 - elapsed);
+            
+            if (remaining !== raceState.countdown) {
+                raceState.countdown = remaining;
+                if (remaining > 0) {
+                    console.log(`⏱️ ${remaining}...`);
+                } else {
+                    console.log('🏁 ¡YA!');
+                    raceState.raceStarted = true;
+                    raceState.startTime = Date.now();
+                    raceState.lapStartTime = Date.now(); // Iniciar cronómetro de vueltas
+                }
+            }
+        } else {
+            // RASTREAR VELOCIDAD MÁXIMA DEL JUGADOR
+            raceState.maxSpeed = Math.max(raceState.maxSpeed, CONFIG.boatSpeed);
+            
+            raceState.elapsedTime = Date.now() - raceState.startTime;
+            checkBuoyPassage();
+            
+            if (typeof updateAI === 'function') {
+                updateAI();
+            }
         }
     }
     
@@ -590,7 +681,7 @@ function drawHUD() {
     ctx.fillText('↑↓ Jugador | ←→ Casco | WASD Acción | J = Jib', canvas.width / 2, canvas.height - 10);
 }
 
-// === MINIMAPA 2D (Con rivales y boya objetivo resaltada) ===
+// === MINIMAPA 2D (Con estelas de IA, línea de meta y boya objetivo) ===
 function drawMinimap() {
     const mapWidth = 200;
     const mapHeight = 100;
@@ -647,7 +738,17 @@ function drawMinimap() {
     ctx.translate(mapX + mapWidth / 2, mapY + mapHeight / 2);
     ctx.scale(-1, 1); // VOLTEAR HORIZONTALMENTE
     
-    // Boyas (CON RESALTADO DE LA OBJETIVO)
+    // 1. DIBUJAR LÍNEA DE META/SALIDA (Z = 600, de X = -300 a X = 300)
+    ctx.beginPath();
+    ctx.moveTo(-(-300) * scale, 600 * scale); // X invertido por el scale(-1, 1)
+    ctx.lineTo(-(300) * scale, 600 * scale);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([6, 6]); // Línea discontinua
+    ctx.stroke();
+    ctx.setLineDash([]); // Resetear
+    
+    // 2. Boyas
     if (typeof window.trackBuoys !== 'undefined' && window.trackBuoys.length > 0) {
         window.trackBuoys.forEach(buoy => {
             const bx = -buoy.position.x * scale;
@@ -673,18 +774,40 @@ function drawMinimap() {
         });
     }
     
-    // NUEVO: Dibujar barcos IA (rivales)
+    // 3. DIBUJAR ESTELAS (TRAILS) DE LA IA
     if (typeof getAIBoatPositions === 'function') {
         const aiPositions = getAIBoatPositions();
         aiPositions.forEach(aiBoat => {
-            const aiX = -aiBoat.x * scale; // X invertido
-            const aiZ = aiBoat.z * scale;  // Z normal
+            // Dibujar estela si existe
+            if (aiBoat.trail && aiBoat.trail.length > 1) {
+                ctx.beginPath();
+                // Color con 40% de opacidad (hex + 66)
+                const trailColor = '#' + aiBoat.color.toString(16).padStart(6, '0') + '66';
+                ctx.strokeStyle = trailColor;
+                ctx.lineWidth = 2;
+                
+                aiBoat.trail.forEach((point, index) => {
+                    const tx = -point.x * scale;
+                    const tz = point.z * scale;
+                    if (index === 0) ctx.moveTo(tx, tz);
+                    else ctx.lineTo(tx, tz);
+                });
+                ctx.stroke();
+            }
+        });
+    }
+    
+    // 4. DIBUJAR BARCOS IA (Rivales)
+    if (typeof getAIBoatPositions === 'function') {
+        const aiPositions = getAIBoatPositions();
+        aiPositions.forEach(aiBoat => {
+            const aiX = -aiBoat.x * scale;
+            const aiZ = aiBoat.z * scale;
             
             ctx.save();
             ctx.translate(aiX, aiZ);
             ctx.rotate(degToRad(aiBoat.heading));
             
-            // Triángulo del rival con color de personalidad
             const colorHex = '#' + aiBoat.color.toString(16).padStart(6, '0');
             ctx.fillStyle = colorHex;
             ctx.beginPath();
@@ -694,16 +817,14 @@ function drawMinimap() {
             ctx.closePath();
             ctx.fill();
             
-            // Borde blanco para distinguir
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
             ctx.lineWidth = 1;
             ctx.stroke();
-            
             ctx.restore();
         });
     }
     
-    // Barco del jugador (SIEMPRE ROJO, más grande para destacar)
+    // 5. Barco del jugador
     const boatX = (typeof CONFIG !== 'undefined') ? -CONFIG.boatX : 0;
     const boatZ = (typeof CONFIG !== 'undefined') ? CONFIG.boatZ : 0;
     const boatHeading = (typeof CONFIG !== 'undefined') ? CONFIG.boatHeading : 0;
@@ -715,7 +836,6 @@ function drawMinimap() {
     ctx.translate(boatMapX, boatMapZ);
     ctx.rotate(degToRad(boatHeading));
     
-    // Jugador más grande y con borde más grueso
     ctx.fillStyle = '#e74c3c';
     ctx.beginPath();
     ctx.moveTo(0, -6);
@@ -727,9 +847,9 @@ function drawMinimap() {
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.stroke();
+    ctx.restore();
     
-    ctx.restore();
-    ctx.restore();
+    ctx.restore(); // Fin del scale(-1, 1)
     
     ctx.fillStyle = 'white';
     ctx.font = 'bold 10px Arial';
@@ -940,6 +1060,124 @@ function drawRaceHUD() {
     ctx.fillStyle = '#2ecc71';
     ctx.font = 'bold 18px Arial';
     ctx.fillText(`TIEMPO: ${timeStr}`, x + 15, y + 80);
+}
+
+// === DIBUJAR CUENTA REGRESIVA ===
+function drawCountdown() {
+    const countdown = raceState.countdown;
+    
+    // Fondo semitransparente
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Número grande en el centro
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    if (countdown > 0) {
+        // Números 3, 2, 1
+        ctx.fillStyle = countdown === 1 ? '#e74c3c' : (countdown === 2 ? '#f39c12' : '#2ecc71');
+        ctx.font = 'bold 200px Arial';
+        ctx.fillText(countdown.toString(), canvas.width / 2, canvas.height / 2);
+        
+        // Texto "PREPÁRATE"
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 30px Arial';
+        ctx.fillText('PREPÁRATE', canvas.width / 2, canvas.height / 2 - 150);
+    } else {
+        // ¡YA!
+        ctx.fillStyle = '#2ecc71';
+        ctx.font = 'bold 150px Arial';
+        ctx.fillText('¡YA!', canvas.width / 2, canvas.height / 2);
+    }
+    
+    // Borde decorativo
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(50, 50, canvas.width - 100, canvas.height - 100);
+}
+
+// === MOSTRAR PANTALLA DE RESULTADOS (Trigger Forzado) ===
+function showRaceResults() {
+    console.log("🚨 ¡TRIGGER ACTIVADO! Mostrando pantalla de resultados...");
+    
+    // 1. Ocultar TODOS los demás menús por seguridad absoluta
+    const menus = ['configMenu', 'modeMenu', 'raceMenu'];
+    menus.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
+
+    // 2. Mostrar el menú de resultados
+    const resultsMenu = document.getElementById('resultsMenu');
+    if (!resultsMenu) {
+        console.error("❌ ERROR: No se encontró el elemento 'resultsMenu' en el HTML");
+        return;
+    }
+    resultsMenu.classList.remove('hidden');
+
+    // 3. Ocultar el HUD y botones del juego
+    const hudBtn = document.getElementById('toggleHudBtn');
+    if (hudBtn) hudBtn.classList.remove('visible');
+    const backBtn = document.getElementById('backToMenuBtn');
+    if (backBtn) backBtn.classList.remove('visible');
+
+    // ... (El resto del código de cálculo del podio y estadísticas se queda IGUAL) ...
+    let participants = [];
+    participants.push({
+        name: "¡TÚ!",
+        isPlayer: true,
+        finishTime: raceState.playerFinishTime,
+        bestLap: raceState.bestLapTime,
+        maxSpeed: raceState.maxSpeed
+    });
+
+    if (typeof window.aiBoats !== 'undefined') {
+        window.aiBoats.forEach(boat => {
+            if (boat.finishTime > 0) {
+                participants.push({
+                    name: boat.personalityData.name,
+                    isPlayer: false,
+                    finishTime: boat.finishTime,
+                    bestLap: boat.bestLapTime,
+                    maxSpeed: 0
+                });
+            }
+        });
+    }
+
+    participants.sort((a, b) => a.finishTime - b.finishTime);
+
+    for (let i = 0; i < 3; i++) {
+        const place = i + 1;
+        const p = participants[i];
+        const nameEl = document.getElementById(`podium${place}Name`);
+        const timeEl = document.getElementById(`podium${place}Time`);
+        
+        if (p) {
+            nameEl.textContent = p.name;
+            nameEl.style.color = p.isPlayer ? '#2ecc71' : (place === 1 ? '#f1c40f' : place === 2 ? '#bdc3c7' : '#cd7f32');
+            timeEl.textContent = formatTime(p.finishTime);
+        } else {
+            nameEl.textContent = "---";
+            timeEl.textContent = "--:--";
+        }
+    }
+
+    const playerStats = participants.find(p => p.isPlayer);
+    if (playerStats) {
+        document.getElementById('statMaxSpeed').textContent = playerStats.maxSpeed.toFixed(1) + ' kn';
+        document.getElementById('statBestLap').textContent = playerStats.bestLap !== Infinity ? formatTime(playerStats.bestLap) : '--:--';
+    }
+}
+
+// === FORMATEAR TIEMPO (MM:SS.d) ===
+function formatTime(seconds) {
+    if (seconds === Infinity || seconds <= 0) return "--:--";
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 10);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms}`;
 }
 
 // === VISTA PREVIA DEL BARCO (Canvas 2D simplificado) ===
