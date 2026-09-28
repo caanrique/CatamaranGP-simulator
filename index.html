@@ -479,6 +479,15 @@
             <p class="menu-subtitle">¿Cómo quieres navegar hoy?</p>
             
             <div class="menu-buttons">
+                <!-- NUEVO: Botón de instrucciones como primera opción -->
+                <button class="menu-btn" onclick="showInstructions()" style="background: rgba(52, 152, 219, 0.2); border-color: rgba(52, 152, 219, 0.5);">
+                    <span class="btn-icon">📖</span>
+                    <div>
+                        <span class="btn-text">Cómo Jugar</span>
+                        <span class="btn-desc">Aprende los controles y mecánicas</span>
+                    </div>
+                </button>
+
                 <button class="menu-btn" onclick="startGame('learning')">
                     <span class="btn-icon">🎓</span>
                     <div>
@@ -495,7 +504,6 @@
                     </div>
                 </button>
                 
-                <!-- CAMBIO: Ahora abre el menú de configuración de carrera en lugar de iniciar directamente -->
                 <button class="menu-btn" onclick="showRaceMenu()">
                     <span class="btn-icon">🏆</span>
                     <div>
@@ -510,6 +518,94 @@
             </button>
         </div>
     </div>
+
+    <!-- ========================================== -->
+    <!-- PANTALLA 5: INSTRUCCIONES DE NAVEGACIÓN -->
+    <!-- ========================================== -->
+    <div id="instructionsMenu" class="menu-overlay hidden">
+        <div class="menu-container" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <h1 class="menu-title" style="font-size: 36px;">📖 CÓMO JUGAR</h1>
+            <p class="menu-subtitle">Guía completa para navegar tu F50</p>
+            
+            <div style="text-align: left; background: rgba(0,0,0,0.5); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                
+                <!-- SECCIÓN 1: CONTROLES -->
+                <h3 style="color: #f39c12; margin-top: 0;">🎮 1. CONTROLES</h3>
+                
+                <h4 style="color: #3498db;">💻 En PC (Teclado):</h4>
+                <ul style="line-height: 1.8; color: #ddd;">
+                    <li><b>Flechas ↑↓:</b> Cambiar entre tripulantes</li>
+                    <li><b>Flechas ←→:</b> Mover al tripulante activo entre cascos (Babor/Estribor)</li>
+                    <li><b>Teclas 1, 2, 3, 4:</b> Seleccionar tripulante directamente</li>
+                    <li><b>W/A/S/D:</b> Acción del tripulante activo (según su rol)</li>
+                    <li><b>J:</b> Activar/Desactivar el Jib (vela de proa)</li>
+                    <li><b>Shift + Flechas:</b> Controlar la cámara (orbitar y zoom)</li>
+                </ul>
+
+                <h4 style="color: #3498db;">📱 En Móvil (Táctil):</h4>
+                <ul style="line-height: 1.8; color: #ddd;">
+                    <li><b>D-Pad (izquierda):</b> ⬆️⬇️ Cambiar tripulante | ⬅️➡️ Mover entre cascos</li>
+                    <li><b>Joystick pequeño (derecha):</b> Controlar la cámara</li>
+                    <li><b>Joystick grande (derecha):</b> Acción del tripulante activo</li>
+                </ul>
+
+                <hr style="border-color: rgba(255,255,255,0.2); margin: 20px 0;">
+
+                <!-- SECCIÓN 2: TRIPULACIÓN -->
+                <h3 style="color: #f39c12;">👥 2. TU TRIPULACIÓN (4 roles)</h3>
+                <ul style="line-height: 1.8; color: #ddd;">
+                    <li><b style="color:#e74c3c;">🔴 Timonel:</b> Controla el <b>rumbo</b> del barco (A/D o ←→)</li>
+                    <li><b style="color:#f39c12;">🟠 Trimmer:</b> Controla la <b>altura de los foils</b> (W/S o ↑↓) + activa el Jib (J)</li>
+                    <li><b style="color:#3498db;">🔵 Grinder 1:</b> Ajusta el <b>ángulo del mástil/ala</b> (A/D o ←→)</li>
+                    <li><b style="color:#9b59b6;">🟣 Grinder 2:</b> Ajusta el <b>ángulo del flap</b> (A/D o ←→)</li>
+                </ul>
+                <p style="color: #aaa; font-size: 13px; font-style: italic;">💡 Tip: Mueve a tu tripulación al lado de <b>barlovento</b> (de donde viene el viento) para contrarrestar la orzada.</p>
+
+                <hr style="border-color: rgba(255,255,255,0.2); margin: 20px 0;">
+
+                <!-- SECCIÓN 3: HUD -->
+                <h3 style="color: #f39c12;">📊 3. EL HUD (Panel Superior Izquierdo)</h3>
+                <ul style="line-height: 1.8; color: #ddd;">
+                    <li><b>Velocímetro:</b> Tu velocidad en nudos. Cambia de color: 🟢 verde (normal) → 🟠 naranja (rápido) → 🔴 rojo (peligro)</li>
+                    <li><b>Barco + Viento:</b> Flecha azul indicando de dónde viene el viento aparente</li>
+                    <li><b>HDG (Rumbo):</b> Tu dirección actual en grados (0°=Norte, 90°=Este, etc.)</li>
+                    <li><b>ESCORA:</b> Barra que muestra cuánto se inclina el barco. ¡Si llega a 45° volcarás!</li>
+                </ul>
+
+                <hr style="border-color: rgba(255,255,255,0.2); margin: 20px 0;">
+
+                <!-- SECCIÓN 4: MINIMAPA -->
+                <h3 style="color: #f39c12;">🗺️ 4. EL MINIMAPA (Superior Derecho)</h3>
+                <ul style="line-height: 1.8; color: #ddd;">
+                    <li><b>Flechas azules en los bordes:</b> Indican la dirección del viento real</li>
+                    <li><b>🔴 Boyas rojas:</b> Línea de salida y boyas de sotavento</li>
+                    <li><b>🟠 Boya naranja:</b> Boya de barlovento</li>
+                    <li><b>🟢 Boya verde brillante:</b> ¡Tu próximo objetivo! Navega hacia ella</li>
+                    <li><b>🔺 Triángulo rojo grande:</b> Tu barco (siempre el más grande)</li>
+                    <li><b>🔺 Triángulos de colores:</b> Barcos rivales de la IA</li>
+                    <li><b>Líneas de colores tenues:</b> Estelas de los rivales (muestran su trayectoria)</li>
+                    <li><b>Línea blanca discontinua:</b> Línea de meta/salida</li>
+                </ul>
+
+                <hr style="border-color: rgba(255,255,255,0.2); margin: 20px 0;">
+
+                <!-- SECCIÓN 5: CONSEJOS -->
+                <h3 style="color: #f39c12;">💡 5. CONSEJOS DE NAVEGACIÓN</h3>
+                <ul style="line-height: 1.8; color: #ddd;">
+                    <li><b>⚓ Contra el viento:</b> No puedes ir directo contra el viento (zona muerta de 45°). Debes hacer <b>zigzag</b> (ceñida) virando entre amuras.</li>
+                    <li><b>🛩️ Para volar:</b> Alcanza 18+ nudos y sube los foils con el Trimmer. ¡Volarás sobre el agua!</li>
+                    <li><b>💥 Cuidado el nosedive:</b> Si vuelas muy alto (>85%) a más de 40 nudos con escora, puedes clavar la proa.</li>
+                    <li><b>🔄 Trasluichada perfecta:</b> Cuando el viento cruza por popa, presiona cualquier tecla en el momento justo para un boost de velocidad.</li>
+                    <li><b>⚖️ Balance:</b> Mueve a tu tripulación a barlovento en viento fuerte para evitar volcar.</li>
+                </ul>
+            </div>
+
+            <button class="menu-btn primary-btn" onclick="showModeMenu()">
+                <span class="btn-text">✅ ¡Entendido! Volver al Menú</span>
+            </button>
+        </div>
+    </div>
+
 
     <!-- ========================================== -->
     <!-- PANTALLA 3: CONFIGURACIÓN DE CARRERA (NUEVO) -->
@@ -631,6 +727,13 @@
     <!-- LÓGICA DE INTERFAZ DE CARRERA (UI) -->
     <!-- ========================================== -->
     <script>
+
+        // Muestra el menú de instrucciones
+        function showInstructions() {
+            document.getElementById('modeMenu').classList.add('hidden');
+            document.getElementById('instructionsMenu').classList.remove('hidden');
+        }
+
         // Muestra el menú de configuración de carrera
         function showRaceMenu() {
             document.getElementById('modeMenu').classList.add('hidden');

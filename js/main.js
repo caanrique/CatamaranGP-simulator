@@ -81,11 +81,17 @@ function showModeMenu() {
     if (typeof updateConfigFromUI === 'function') updateConfigFromUI();
     if (typeof updateBoatColors === 'function') updateBoatColors();
     
-    const configMenu = document.getElementById('configMenu');
-    const modeMenu = document.getElementById('modeMenu');
+    // ✅ NUEVO: Ocultar TODOS los demás menús para evitar superposiciones
+    const menusToHide = ['configMenu', 'instructionsMenu', 'raceMenu', 'resultsMenu'];
+    menusToHide.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
     
-    if (configMenu) configMenu.classList.add('hidden');
+    // Mostrar el menú de modos
+    const modeMenu = document.getElementById('modeMenu');
     if (modeMenu) modeMenu.classList.remove('hidden');
+    
     console.log('🎮 Pantalla de Modos de Juego mostrada');
 }
 

@@ -67,12 +67,13 @@ function createABoat(personality, id) {
         
         // Estado
         currentLap: 0,
-        nextBuoyIndex: 0,
+        nextBuoyIndex: 1,
         isManeuvering: false,
         maneuverTimer: 0,
         finishTime: 0,         // NUEVO
         bestLapTime: Infinity, // NUEVO
         lapStartTime: 0,       // NUEVO
+        passingBuoyCooldown: 0,
         
         // Mesh 3D (se creará después)
         mesh: null,
@@ -258,14 +259,21 @@ function updateAI() {
     if (!raceState.raceStarted) return;
     
     const currentTime = Date.now();
-    
+
+    // UN SOLO bucle forEach que contiene toda la lógica
     window.aiBoats.forEach(aiBoat => {
-        // Inicializar el cronómetro de vuelta de la IA si aún no ha empezado
+        
+        // 1. Reducir el contador de protección de boya
+        if (aiBoat.passingBuoyCooldown > 0) {
+            aiBoat.passingBuoyCooldown--;
+        }
+
+        // 2. Inicializar el cronómetro de vuelta de la IA si aún no ha empezado
         if (aiBoat.lapStartTime === 0) {
             aiBoat.lapStartTime = raceState.startTime;
         }
 
-        // NUEVO: Registrar posición para la estela cada 500ms (0.5 segundos)
+        // 3. Registrar posición para la estela cada 500ms (0.5 segundos)
         if (currentTime - aiBoat.lastTrailTime > 500) {
             aiBoat.trail.push({ x: aiBoat.x, z: aiBoat.z });
             // Mantener solo los últimos 40 puntos (aprox. 20 segundos de historial)
@@ -275,28 +283,28 @@ function updateAI() {
             aiBoat.lastTrailTime = currentTime;
         }
 
-        // Tomar decisiones cada 100ms (10 veces por segundo)
+        // 4. Tomar decisiones cada 100ms (10 veces por segundo)
         if (currentTime - aiBoat.lastDecisionTime > 100) {
             makeAIDecisions(aiBoat);
             aiBoat.lastDecisionTime = currentTime;
         }
         
-        // Actualizar física simplificada
+        // 5. Actualizar física simplificada
         updateAIPhysics(aiBoat, currentTime);
         
-        // Verificar pasadas de boyas
+        // 6. Verificar pasadas de boyas
         checkAIBuoyPassage(aiBoat);
         
-        // Actualizar mesh 3D
+        // 7. Actualizar mesh 3D
         if (aiBoat.mesh) {
             aiBoat.mesh.position.x = aiBoat.x;
             aiBoat.mesh.position.z = aiBoat.z;
             aiBoat.mesh.position.y = -2 + (aiBoat.foilHeight * 1.2);
             aiBoat.mesh.rotation.y = degToRad(aiBoat.heading + 180);
         }
-    });
+    }); // <--- ¡Aquí se cierra el único forEach correctamente!
     
-    // Manejar colisiones entre todos los barcos
+    // 8. Manejar colisiones entre todos los barcos
     handleAICollisions();
 }
 
@@ -352,7 +360,7 @@ function handleAICollisions() {
     }
 }
 
-// === TOMAR DECISIONES DE IA (Lógica de Zigzag Corregida) ===
+// === TOMAR DECISIONES DE IA (Lógica de viento corregida) ===
 function makeAIDecisions(aiBoat) {
     let targetBuoy;
     if (aiBoat.nextBuoyIndex < RACE_CIRCUIT.length) {
@@ -361,46 +369,61 @@ function makeAIDecisions(aiBoat) {
         targetBuoy = { x: 0, z: 600, radius: 60, name: "Meta" };
     }
     
-    // Calcular ángulo hacia el objetivo
+    // Calcular ángulo hacia el objetivo (geometría pura, no depende del viento)
     const dx = targetBuoy.x - aiBoat.x;
     const dz = targetBuoy.z - aiBoat.z;
     const targetAngle = normalizeAngle(Math.atan2(dx, dz) * (180 / Math.PI));
     
-    // === LÓGICA INFALIBLE DE VIENTO ===
-    // Calculamos la diferencia absoluta entre la dirección del viento y hacia dónde queremos ir
-    let angleDiff = Math.abs(normalizeAngle(CONFIG.trueWindDirection - targetAngle));
+    // === CORRECCIÓN CLAVE ===
+    // CONFIG.trueWindDirection es HACIA DÓNDE va el viento (como las flechas del minimapa)
+    // Para saber DE DONDE viene, le sumamos 180°
+    const windFromDirection = normalizeAngle(CONFIG.trueWindDirection + 180);
+    
+    // Calculamos el ángulo entre DE DONDE viene el viento y hacia dónde queremos ir
+    let angleDiff = Math.abs(normalizeAngle(windFromDirection - targetAngle));
     if (angleDiff > 180) angleDiff = 360 - angleDiff; // Obtener el ángulo más corto
     
-    // Si la diferencia es menor a 45°, vamos DIRECTO CONTRA EL VIENTO (Proa)
-    if (angleDiff < 45) {
-        // ZIG-ZAG: Navegar en ceñida (45° respecto al viento)
+    // Si la diferencia es menor a 50°, vamos CONTRA EL VIENTO (Proa) → necesitamos zigzag
+    if (angleDiff < 50) {
+        // ZIG-ZAG INTELIGENTE: Elegir la amura que nos acerque a la boya
+        
+        // ¿La boya está a la derecha o izquierda del viento real?
+        let relativeBuoyAngle = normalizeAngle(targetAngle - windFromDirection);
+        if (relativeBuoyAngle > 180) relativeBuoyAngle -= 360;
+        
+        // Amura óptima: si la boya está a la derecha del viento, ceñimos por estribor
+        const optimalTack = relativeBuoyAngle > 0 ? 'starboard' : 'port';
+        
         if (aiBoat.currentTack === undefined) {
-            aiBoat.currentTack = Math.random() < 0.5 ? 'port' : 'starboard';
+            aiBoat.currentTack = optimalTack;
             aiBoat.tackTimer = 0;
         }
         
         aiBoat.tackTimer++;
         const distanceToBuoy = Math.sqrt(dx * dx + dz * dz);
-        const shouldTack = aiBoat.tackTimer > 900 || distanceToBuoy < 200;
+        
+        // Virar cada ~10 segundos o si estamos muy cerca de la boya
+        const shouldTack = aiBoat.tackTimer > 600 || (distanceToBuoy < 150 && aiBoat.tackTimer > 100);
         
         if (shouldTack) {
             aiBoat.currentTack = aiBoat.currentTack === 'port' ? 'starboard' : 'port';
             aiBoat.tackTimer = 0;
-            console.log(`🔄 [${aiBoat.personalityData.name}] Virada en ceñida (Contra el viento)`);
+            console.log(`🔄 [${aiBoat.personalityData.name}] Virada en ceñida`);
         }
         
+        // Calcular el rumbo de ceñida usando windFromDirection (DE DONDE viene el viento)
         let tackAngle;
         if (aiBoat.currentTack === 'port') {
-            tackAngle = normalizeAngle(CONFIG.trueWindDirection + 45);
+            tackAngle = normalizeAngle(windFromDirection - 45);
         } else {
-            tackAngle = normalizeAngle(CONFIG.trueWindDirection - 45);
+            tackAngle = normalizeAngle(windFromDirection + 45);
         }
         aiBoat.targetHeading = tackAngle;
         
     } else {
         // Navegación normal (Través o Popa): Apuntar directo a la boya
         aiBoat.targetHeading = targetAngle;
-        aiBoat.currentTack = undefined; // Resetear estado de ceñida
+        aiBoat.currentTack = undefined;
     }
     
     // Calcular diferencia de rumbo para girar suavemente
@@ -448,8 +471,8 @@ function updateAIPhysics(aiBoat, currentTime) {
     
     aiBoat.heading = normalizeAngle(aiBoat.heading + headingChange);
     
-    // Calcular velocidad objetivo basada en viento y personalidad
-    const windAngle = normalizeAngle(CONFIG.trueWindDirection - aiBoat.heading);
+    // Calcular velocidad objetivo basada en viento y personalidad (viento invertido)
+    const windAngle = normalizeAngle(CONFIG.trueWindDirection + 180 - aiBoat.heading);
     let targetSpeed = calculateAISpeed(windAngle);
     targetSpeed *= aiBoat.personalityData.speedFactor;
     
@@ -460,7 +483,7 @@ function updateAIPhysics(aiBoat, currentTime) {
     // Ajustar vela y flap automáticamente (IA)
     if (aiBoat.mastGroup) {
         // Vela se ajusta según el viento aparente
-        const windAngle = normalizeAngle(CONFIG.trueWindDirection - aiBoat.heading);
+        const windAngle = normalizeAngle(CONFIG.trueWindDirection + 180 - aiBoat.heading);
         const sailTrim = (windAngle - 90) * 0.5;
         aiBoat.mastGroup.rotation.y = degToRad(sailTrim);
     }
@@ -471,12 +494,12 @@ function updateAIPhysics(aiBoat, currentTime) {
         aiBoat.flapHinge.rotation.y = degToRad(-flapAngle);
     }
 
-    // Mover el barco
+    // Mover el barco (Sincronizado con la física del jugador)
     const headingRad = degToRad(aiBoat.heading);
     const speedFactor = aiBoat.speed * 0.04;
     
-    aiBoat.x += Math.sin(headingRad) * speedFactor;
-    aiBoat.z += Math.cos(headingRad) * speedFactor;
+    aiBoat.x += Math.sin(headingRad) * speedFactor;  // ✅ Signo negativo igual que el jugador
+    aiBoat.z += Math.cos(headingRad) * speedFactor;  // ✅ Signo negativo igual que el jugador
     
     // Ajustar foils según velocidad
     if (aiBoat.speed < 10) {
@@ -486,7 +509,42 @@ function updateAIPhysics(aiBoat, currentTime) {
     } else {
         aiBoat.foilHeight = 1.0;
     }
-}
+
+        // === LÍMITES DEL CAMPO DE REGATA (Igual que el jugador) ===
+    const FIELD_HALF_WIDTH = 2000;
+    const FIELD_HALF_HEIGHT = 1000;
+    const MARGIN = 50; // Margen de seguridad un poco mayor para la IA
+    
+    // Si la IA se acerca al borde, la empujamos suavemente hacia adentro y reducimos velocidad
+    if (aiBoat.x > FIELD_HALF_WIDTH - MARGIN) {
+        aiBoat.x = FIELD_HALF_WIDTH - MARGIN;
+        aiBoat.speed *= 0.7;
+        aiBoat.targetHeading = normalizeAngle(aiBoat.heading - 45); // Girar hacia adentro
+    } else if (aiBoat.x < -FIELD_HALF_WIDTH + MARGIN) {
+        aiBoat.x = -FIELD_HALF_WIDTH + MARGIN;
+        aiBoat.speed *= 0.7;
+        aiBoat.targetHeading = normalizeAngle(aiBoat.heading + 45);
+    }
+    
+    if (aiBoat.z > FIELD_HALF_HEIGHT - MARGIN) {
+        aiBoat.z = FIELD_HALF_HEIGHT - MARGIN;
+        aiBoat.speed *= 0.7;
+        aiBoat.targetHeading = normalizeAngle(aiBoat.heading - 45);
+    } else if (aiBoat.z < -FIELD_HALF_HEIGHT + MARGIN) {
+        aiBoat.z = -FIELD_HALF_HEIGHT + MARGIN;
+        aiBoat.speed *= 0.7;
+        aiBoat.targetHeading = normalizeAngle(aiBoat.heading + 45);
+    }
+    // === ORZADA VISUAL DE LA IA ===
+    // Simula la escora basada en la velocidad y la dirección del viento
+    const windPush = (CONFIG.trueWindSpeed * CONFIG.trueWindSpeed) * 0.008;
+    const heelingForce = windPush * Math.sin(degToRad(CONFIG.trueWindDirection - aiBoat.heading));
+    const simulatedHeel = heelingForce * 1.2; // Mismo multiplicador que usamos para el jugador
+    
+    if (aiBoat.mesh) {
+        aiBoat.mesh.rotation.z = degToRad(simulatedHeel);
+    }
+} // <-- Esta es la llave de cierre de updateAIPhysics
 
 // === CALCULAR VELOCIDAD DE IA ===
 // === CALCULAR VELOCIDAD DE IA ===
@@ -508,7 +566,7 @@ function calculateAISpeed(windAngle) {
     return Math.min(targetSpeed, 45);
 }
 
-// === VERIFICAR PASADA DE BOYAS Y META PARA IA ===
+// === VERIFICAR PASADA DE BOYAS Y META PARA IA (Blindada contra doble conteo) ===
 function checkAIBuoyPassage(aiBoat) {
     let targetX, targetZ, targetRadius;
     
@@ -528,8 +586,14 @@ function checkAIBuoyPassage(aiBoat) {
     const distance = Math.sqrt(dx * dx + dz * dz);
     
     if (distance <= targetRadius) {
+        // ✅ BLINDAJE: Si el cooldown está activo, ignorar y esperar a salir del radio
+        if (aiBoat.passingBuoyCooldown > 0) return;
+        
         const passedName = aiBoat.nextBuoyIndex < RACE_CIRCUIT.length ? RACE_CIRCUIT[aiBoat.nextBuoyIndex].name : "Meta";
         console.log(`🤖 [${aiBoat.personalityData.name}] Pasó: ${passedName}`);
+        
+        // ✅ Activar 3 segundos (180 frames) de inmunidad para evitar doble conteo
+        aiBoat.passingBuoyCooldown = 180;
         
         if (aiBoat.nextBuoyIndex < RACE_CIRCUIT.length - 1) {
             aiBoat.nextBuoyIndex++;

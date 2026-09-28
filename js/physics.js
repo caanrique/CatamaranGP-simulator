@@ -271,7 +271,7 @@ function updateHeelAngle() {
     const wingFactor = CONFIG.wingAreaMultiplier[CONFIG.currentWing];
     
     // Fuerza del viento (reducida para un barco de 2+ toneladas)
-    const windPush = (aw.speed * aw.speed) * 0.005 * wingFactor;
+    const windPush = (aw.speed * aw.speed) * 0.008 * wingFactor;
     
     // heelingForce: 
     // Positivo (viento de estribor) = empuja a escorar a babor (+ rotation.z)
