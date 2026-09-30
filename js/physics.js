@@ -289,9 +289,9 @@ function updateHeelAngle() {
     let crewMoment = 0;
     if (aw.speed > 18) {
         const windStrengthFactor = Math.min(1.0, (aw.speed - 18) / 15);
-        crewMoment = (wd.port - wd.starboard) * 0.005 * windStrengthFactor; // Reducido de 0.12 a 0.005
+        crewMoment = (wd.starboard - wd.port) * 0.035 * windStrengthFactor; // ✅ Invertido
     } else {
-        crewMoment = (wd.port - wd.starboard) * 0.001; // Reducido de 0.02 a 0.001 (casi imperceptible)
+        crewMoment = (wd.starboard - wd.port) * 0.02; // ✅ Invertido
     }
     
     const flightStability = CONFIG.isFlying ? 0.9 : 1.0;
@@ -302,7 +302,7 @@ function updateHeelAngle() {
     // targetHeel: 
     // Positivo = escora a babor (babor se hunde, estribor sube)
     // Negativo = escora a estribor (estribor se hunde, babor sube)
-    let targetHeel = netForce * 0.8;
+    let targetHeel = -netForce * 0.8;
     
     // Suavizado del movimiento (lerp)
     if (CONFIG.heelAngle < targetHeel) {

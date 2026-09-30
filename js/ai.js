@@ -510,60 +510,88 @@ function updateAIPhysics(aiBoat, currentTime) {
         aiBoat.foilHeight = 1.0;
     }
 
-        // === LÍMITES DEL CAMPO DE REGATA (Igual que el jugador) ===
+    // === LÍMITES DEL CAMPO DE REGATA (Con rebote inteligente) ===
     const FIELD_HALF_WIDTH = 2000;
     const FIELD_HALF_HEIGHT = 1000;
-    const MARGIN = 50; // Margen de seguridad un poco mayor para la IA
+    const MARGIN = 50;
     
-    // Si la IA se acerca al borde, la empujamos suavemente hacia adentro y reducimos velocidad
+    // Inicializar timer de rebote si no existe
+    if (aiBoat.bounceTimer === undefined) aiBoat.bounceTimer = 0;
+    
+    let hitBoundary = false;
+    
+    // Detectar y corregir colisión con límites
     if (aiBoat.x > FIELD_HALF_WIDTH - MARGIN) {
         aiBoat.x = FIELD_HALF_WIDTH - MARGIN;
-        aiBoat.speed *= 0.7;
-        aiBoat.targetHeading = normalizeAngle(aiBoat.heading - 45); // Girar hacia adentro
+        aiBoat.speed *= 0.6;
+        hitBoundary = true;
     } else if (aiBoat.x < -FIELD_HALF_WIDTH + MARGIN) {
         aiBoat.x = -FIELD_HALF_WIDTH + MARGIN;
-        aiBoat.speed *= 0.7;
-        aiBoat.targetHeading = normalizeAngle(aiBoat.heading + 45);
+        aiBoat.speed *= 0.6;
+        hitBoundary = true;
     }
     
     if (aiBoat.z > FIELD_HALF_HEIGHT - MARGIN) {
         aiBoat.z = FIELD_HALF_HEIGHT - MARGIN;
-        aiBoat.speed *= 0.7;
-        aiBoat.targetHeading = normalizeAngle(aiBoat.heading - 45);
+        aiBoat.speed *= 0.6;
+        hitBoundary = true;
     } else if (aiBoat.z < -FIELD_HALF_HEIGHT + MARGIN) {
         aiBoat.z = -FIELD_HALF_HEIGHT + MARGIN;
-        aiBoat.speed *= 0.7;
-        aiBoat.targetHeading = normalizeAngle(aiBoat.heading + 45);
+        aiBoat.speed *= 0.6;
+        hitBoundary = true;
     }
+    
+    // Si tocó el límite, activar rebote
+    if (hitBoundary) {
+        aiBoat.bounceTimer = 120; // 2 segundos de rebote (120 frames)
+        // Apuntar directamente al centro del mapa
+        const angleToCenter = normalizeAngle(Math.atan2(-aiBoat.x, -aiBoat.z) * (180 / Math.PI));
+        aiBoat.targetHeading = angleToCenter;
+        console.log(`🔄 [${aiBoat.personalityData.name}] Rebotó del límite, volviendo al centro`);
+    }
+    
+    // Durante el rebote, mantener el rumbo al centro
+    if (aiBoat.bounceTimer > 0) {
+        aiBoat.bounceTimer--;
+        const angleToCenter = normalizeAngle(Math.atan2(-aiBoat.x, -aiBoat.z) * (180 / Math.PI));
+        aiBoat.targetHeading = angleToCenter;
+    }
+
     // === ORZADA VISUAL DE LA IA ===
-    // Simula la escora basada en la velocidad y la dirección del viento
+    // El viento empuja hacia sotavento (lado opuesto a donde viene)
     const windPush = (CONFIG.trueWindSpeed * CONFIG.trueWindSpeed) * 0.008;
     const heelingForce = windPush * Math.sin(degToRad(CONFIG.trueWindDirection - aiBoat.heading));
-    const simulatedHeel = heelingForce * 1.2; // Mismo multiplicador que usamos para el jugador
+    const simulatedHeel = -heelingForce * 1.2; // ✅ Signo negativo invertido para orzar a sotavento
     
     if (aiBoat.mesh) {
         aiBoat.mesh.rotation.z = degToRad(simulatedHeel);
     }
+
 } // <-- Esta es la llave de cierre de updateAIPhysics
 
-// === CALCULAR VELOCIDAD DE IA ===
-// === CALCULAR VELOCIDAD DE IA ===
+// === CALCULAR VELOCIDAD DE IA (Con ajuste por modo de juego) ===
 function calculateAISpeed(windAngle) {
-    // Tabla polar simplificada para IA
     const normAngle = windAngle > 180 ? 360 - windAngle : windAngle;
     
-    let targetSpeed = 15; // Valor por defecto (Popa)
+    let targetSpeed = 15;
     
-    if (normAngle < 30) targetSpeed = 5;       // Zona muerta
-    else if (normAngle < 60) targetSpeed = 20; // Ceñida
-    else if (normAngle < 120) targetSpeed = 30;// Través (más rápido)
-    else if (normAngle < 150) targetSpeed = 25;// Largo
+    if (normAngle < 30) targetSpeed = 5;
+    else if (normAngle < 60) targetSpeed = 20;
+    else if (normAngle < 120) targetSpeed = 30;
+    else if (normAngle < 150) targetSpeed = 25;
     
-    // Limitar según condición de viento (Ahora esto SÍ se ejecuta)
-    if (CONFIG.windCondition === 'light') return Math.min(targetSpeed, 22);
-    if (CONFIG.windCondition === 'intermediate') return Math.min(targetSpeed, 35);
+    // ✅ NUEVO: Ajuste por modo de juego
+    let maxSpeed;
+    if (CONFIG.windCondition === 'light') maxSpeed = 22;
+    else if (CONFIG.windCondition === 'intermediate') maxSpeed = 35;
+    else maxSpeed = 45;
     
-    return Math.min(targetSpeed, 45);
+    // En modo Fácil, el rival va un 15% más lento para dar ventaja al jugador
+    if (raceState.isTimeBasedRace) {
+        maxSpeed *= 0.85;
+    }
+    
+    return Math.min(targetSpeed, maxSpeed);
 }
 
 // === VERIFICAR PASADA DE BOYAS Y META PARA IA (Blindada contra doble conteo) ===

@@ -27,16 +27,20 @@ let raceState = {
     elapsedTime: 0,
     currentLap: 0,
     totalLaps: 3,
-    nextBuoyIndex: 0,
+    nextBuoyIndex: 1,
     isFinished: false,
     countdown: 0,
     countdownStartTime: 0,
     raceStarted: false,
-    // NUEVAS VARIABLES DE ESTADÍSTICAS
     maxSpeed: 0,
     lapStartTime: 0,
     bestLapTime: Infinity,
-    playerFinishTime: 0
+    playerFinishTime: 0,
+    // ✅ NUEVAS VARIABLES PARA MODO FÁCIL (POR TIEMPO)
+    playerDistance: 0,        // Distancia total recorrida por el jugador (en metros)
+    playerLastX: 0,           // Última posición X para calcular distancia incremental
+    playerLastZ: 0,           // Última posición Z para calcular distancia incremental
+    isTimeBasedRace: false    // true si es modo fácil (por tiempo)
 };
 
 // Orden del circuito olímpico: Salida -> Barlovento -> Sotavento 1 -> Sotavento 2 -> Meta
@@ -169,6 +173,12 @@ function startGame(mode) {
             raceState.lapStartTime = 0;
             raceState.playerFinishTime = 0;
             
+            // ✅ NUEVO: Configurar modo por tiempo si es Fácil
+            raceState.isTimeBasedRace = (window.RACE_CONFIG && window.RACE_CONFIG.difficulty === 'easy');
+            raceState.playerDistance = 0;
+            raceState.playerLastX = 0;
+            raceState.playerLastZ = 600;
+            
             raceState.countdown = 5;
             raceState.countdownStartTime = Date.now();
             raceState.raceStarted = false;
@@ -176,7 +186,7 @@ function startGame(mode) {
             
             if (window.RACE_CONFIG) {
                 raceState.totalLaps = window.RACE_CONFIG.laps || 3;
-                console.log(`⚙️ Configuración: ${window.RACE_CONFIG.difficulty}, ${raceState.totalLaps} vueltas`);
+                console.log(`⚙️ Configuración: ${window.RACE_CONFIG.difficulty}, ${raceState.isTimeBasedRace ? '5 minutos' : raceState.totalLaps + ' vueltas'}`);
             }
             break;
     }
@@ -520,7 +530,35 @@ function gameLoop(timestamp) {
             raceState.maxSpeed = Math.max(raceState.maxSpeed, CONFIG.boatSpeed);
             
             raceState.elapsedTime = Date.now() - raceState.startTime;
-            checkBuoyPassage();
+            
+            // ✅ NUEVO: Calcular distancia recorrida por el jugador
+            const dxPlayer = CONFIG.boatX - raceState.playerLastX;
+            const dzPlayer = CONFIG.boatZ - raceState.playerLastZ;
+            const distanceThisFrame = Math.sqrt(dxPlayer * dxPlayer + dzPlayer * dzPlayer);
+            raceState.playerDistance += distanceThisFrame;
+            raceState.playerLastX = CONFIG.boatX;
+            raceState.playerLastZ = CONFIG.boatZ;
+            
+            // ✅ NUEVO: Si es modo por tiempo, verificar si se acabaron los 5 minutos
+            if (raceState.isTimeBasedRace) {
+                const timeLimitMs = (window.RACE_CONFIG.timeLimit || 300) * 1000;
+                if (raceState.elapsedTime >= timeLimitMs) {
+                    raceState.isFinished = true;
+                    raceState.isActive = false;
+                    raceState.playerFinishTime = raceState.elapsedTime / 1000;
+                    console.log(`⏱️ ¡TIEMPO CUMPLIDO! Distancia recorrida: ${raceState.playerDistance.toFixed(0)}m`);
+                    setTimeout(() => {
+                        showRaceResults();
+                    }, 500);
+                    render();
+                    gameState.frameCount++;
+                    requestAnimationFrame(gameLoop);
+                    return;
+                }
+            } else {
+                // Modo por vueltas: verificar pasada de boyas
+                checkBuoyPassage();
+            }
             
             if (typeof updateAI === 'function') {
                 updateAI();
@@ -1030,42 +1068,75 @@ function drawGybeCrackFlash() {
     if (CONFIG.gybeCrackFlash < 0) CONFIG.gybeCrackFlash = 0;
 }
 
-// === HUD ESPECÍFICO DE CARRERA ===
+// === HUD ESPECÍFICO DE CARRERA (Adaptado para modo tiempo y vueltas) ===
 function drawRaceHUD() {
     const x = 20;
-    const y = 110; // Justo debajo del HUD compacto
+    const y = 110;
     
     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    ctx.fillRect(x, y, 240, 95);
+    ctx.fillRect(x, y, 240, 115);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, 240, 95);
+    ctx.strokeRect(x, y, 240, 115);
     
     ctx.fillStyle = 'white';
     ctx.font = 'bold 14px Arial';
     ctx.textAlign = 'left';
     
-    // Vueltas
-    const lapText = raceState.isFinished ? '🏁 FINALIZADO' : `VUELTA: ${raceState.currentLap + 1} / ${raceState.totalLaps}`;
-    ctx.fillText(lapText, x + 15, y + 25);
-    
-    // Próxima boya
-    let nextBuoyName = "META";
-    if (!raceState.isFinished && raceState.nextBuoyIndex < RACE_CIRCUIT.length) {
-        nextBuoyName = RACE_CIRCUIT[raceState.nextBuoyIndex].name;
+    if (raceState.isTimeBasedRace) {
+        // === MODO POR TIEMPO ===
+        // Tiempo restante
+        const timeLimitMs = (window.RACE_CONFIG.timeLimit || 300) * 1000;
+        const remainingMs = Math.max(0, timeLimitMs - raceState.elapsedTime);
+        const remainingSec = Math.floor(remainingMs / 1000);
+        const mins = Math.floor(remainingSec / 60);
+        const secs = remainingSec % 60;
+        const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        
+        ctx.fillStyle = remainingSec < 60 ? '#e74c3c' : '#2ecc71';
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText(`⏱️ ${timeStr}`, x + 15, y + 25);
+        
+        // Distancia recorrida
+        ctx.fillStyle = '#3498db';
+        ctx.font = 'bold 14px Arial';
+        if (raceState.playerDistance >= 1000) {
+            ctx.fillText(`📏 ${(raceState.playerDistance / 1000).toFixed(2)} km`, x + 15, y + 50);
+        } else {
+            ctx.fillText(`📏 ${raceState.playerDistance.toFixed(0)} m`, x + 15, y + 50);
+        }
+        
+        // Modo
+        ctx.fillStyle = '#f39c12';
+        ctx.font = 'bold 12px Arial';
+        ctx.fillText(`🟢 MODO FÁCIL - ¡Recorre más!`, x + 15, y + 75);
+        
+        // Velocidad máxima
+        ctx.fillStyle = '#aaa';
+        ctx.font = '11px Arial';
+        ctx.fillText(`Vel. máx: ${raceState.maxSpeed.toFixed(1)} kn`, x + 15, y + 100);
+        
+    } else {
+        // === MODO POR VUELTAS ===
+        const lapText = raceState.isFinished ? '🏁 FINALIZADO' : `VUELTA: ${raceState.currentLap + 1} / ${raceState.totalLaps}`;
+        ctx.fillText(lapText, x + 15, y + 25);
+        
+        let nextBuoyName = "META";
+        if (!raceState.isFinished && raceState.nextBuoyIndex < RACE_CIRCUIT.length) {
+            nextBuoyName = RACE_CIRCUIT[raceState.nextBuoyIndex].name;
+        }
+        ctx.fillStyle = '#f39c12';
+        ctx.fillText(`PRÓXIMA: ${nextBuoyName}`, x + 15, y + 50);
+        
+        const totalSeconds = Math.floor(raceState.elapsedTime / 1000);
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        
+        ctx.fillStyle = '#2ecc71';
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText(`TIEMPO: ${timeStr}`, x + 15, y + 80);
     }
-    ctx.fillStyle = '#f39c12';
-    ctx.fillText(`PRÓXIMA: ${nextBuoyName}`, x + 15, y + 50);
-    
-    // Tiempo
-    const totalSeconds = Math.floor(raceState.elapsedTime / 1000);
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    
-    ctx.fillStyle = '#2ecc71';
-    ctx.font = 'bold 18px Arial';
-    ctx.fillText(`TIEMPO: ${timeStr}`, x + 15, y + 80);
 }
 
 // === DIBUJAR CUENTA REGRESIVA ===
@@ -1104,11 +1175,12 @@ function drawCountdown() {
 }
 
 // === MOSTRAR PANTALLA DE RESULTADOS (Trigger Forzado) ===
+// === MOSTRAR PANTALLA DE RESULTADOS (Adaptada para modo tiempo y vueltas) ===
 function showRaceResults() {
     console.log("🚨 ¡TRIGGER ACTIVADO! Mostrando pantalla de resultados...");
     
     // 1. Ocultar TODOS los demás menús por seguridad absoluta
-    const menus = ['configMenu', 'modeMenu', 'raceMenu'];
+    const menus = ['configMenu', 'modeMenu', 'raceMenu', 'instructionsMenu'];
     menus.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
@@ -1128,7 +1200,88 @@ function showRaceResults() {
     const backBtn = document.getElementById('backToMenuBtn');
     if (backBtn) backBtn.classList.remove('visible');
 
-    // ... (El resto del código de cálculo del podio y estadísticas se queda IGUAL) ...
+    // === MODO POR TIEMPO (Fácil): Ordenar por distancia recorrida ===
+    if (raceState.isTimeBasedRace) {
+        let participants = [];
+        
+        // Jugador
+        participants.push({
+            name: "¡TÚ!",
+            isPlayer: true,
+            distance: raceState.playerDistance,
+            maxSpeed: raceState.maxSpeed
+        });
+
+        // IA: sumar su distancia recorrida
+        if (typeof window.aiBoats !== 'undefined') {
+            window.aiBoats.forEach(boat => {
+                let boatDistance = 0;
+                if (boat.trail && boat.trail.length > 1) {
+                    for (let i = 1; i < boat.trail.length; i++) {
+                        const dx = boat.trail[i].x - boat.trail[i-1].x;
+                        const dz = boat.trail[i].z - boat.trail[i-1].z;
+                        boatDistance += Math.sqrt(dx * dx + dz * dz);
+                    }
+                }
+                // Escalar: cada punto del trail es 0.5s, así que multiplicamos para estimar distancia total
+                // Aproximación: multiplicar por 2 porque solo guardamos cada 0.5s
+                boatDistance *= 2;
+                
+                participants.push({
+                    name: boat.personalityData.name,
+                    isPlayer: false,
+                    distance: boatDistance,
+                    maxSpeed: 0
+                });
+            });
+        }
+
+        // Ordenar por distancia (mayor primero)
+        participants.sort((a, b) => b.distance - a.distance);
+
+        // Actualizar Podio
+        for (let i = 0; i < 3; i++) {
+            const place = i + 1;
+            const p = participants[i];
+            const nameEl = document.getElementById(`podium${place}Name`);
+            const timeEl = document.getElementById(`podium${place}Time`);
+            
+            if (p) {
+                nameEl.textContent = p.name;
+                nameEl.style.color = p.isPlayer ? '#2ecc71' : (place === 1 ? '#f1c40f' : place === 2 ? '#bdc3c7' : '#cd7f32');
+                // Mostrar distancia en metros/km
+                if (p.distance >= 1000) {
+                    timeEl.textContent = (p.distance / 1000).toFixed(2) + ' km';
+                } else {
+                    timeEl.textContent = p.distance.toFixed(0) + ' m';
+                }
+            } else {
+                nameEl.textContent = "---";
+                timeEl.textContent = "--";
+            }
+        }
+
+        // Actualizar Estadísticas del Jugador
+        const playerStats = participants.find(p => p.isPlayer);
+        if (playerStats) {
+            document.getElementById('statMaxSpeed').textContent = playerStats.maxSpeed.toFixed(1) + ' kn';
+            if (playerStats.distance >= 1000) {
+                document.getElementById('statBestLap').textContent = (playerStats.distance / 1000).toFixed(2) + ' km';
+            } else {
+                document.getElementById('statBestLap').textContent = playerStats.distance.toFixed(0) + ' m';
+            }
+            // Cambiar etiquetas del HUD para modo tiempo
+            const labels = document.querySelectorAll('#resultsMenu div[style*="VELOCIDAD MÁXIMA"], #resultsMenu div[style*="MEJOR VUELTA"]');
+            if (labels.length >= 2) {
+                labels[1].textContent = '📏 DISTANCIA TOTAL';
+            }
+        }
+        
+        console.log("🏆 Modo por tiempo finalizado. Ganador por distancia.");
+        return;
+    }
+
+    // === MODO POR VUELTAS (Intermedio/Pro): Ordenar por tiempo ===
     let participants = [];
     participants.push({
         name: "¡TÚ!",
