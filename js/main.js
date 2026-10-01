@@ -45,10 +45,10 @@ let raceState = {
 
 // Orden del circuito olímpico: Salida -> Barlovento -> Sotavento 1 -> Sotavento 2 -> Meta
 const RACE_CIRCUIT = [
-    { name: "Línea de Salida", x: 0, z: 600, radius: 60 },
-    { name: "Boya Barlovento", x: 0, z: -800, radius: 40 },
-    { name: "Boya Sotavento 1", x: 600, z: 600, radius: 40 },
-    { name: "Boya Sotavento 2", x: -600, z: 600, radius: 40 }
+    { name: "Línea de Salida", x: 300, z: 600, radius: 60 },
+    { name: "Boya Barlovento", x: 0, z: -600, radius: 40 }, //la de más arriba
+    { name: "Boya Sotavento 1", x: 1200, z: -100, radius: 40 },  //la de la derecha 
+    { name: "Boya Sotavento 2", x: -900, z: -300, radius: 40 }   //la de la izquierda
 ];
 
 // === CONTROL DEL HUD ===
@@ -387,12 +387,25 @@ function checkBuoyPassage() {
     if (distance <= targetRadius) {
         console.log(`✅ ¡Pasado: ${targetName}!`);
         
+        // ✅ MODO FÁCIL: Solo avanzar el índice, no contar vueltas ni terminar
+        if (raceState.isTimeBasedRace) {
+            if (raceState.nextBuoyIndex < RACE_CIRCUIT.length - 1) {
+                raceState.nextBuoyIndex++;
+            } else if (raceState.nextBuoyIndex === RACE_CIRCUIT.length - 1) {
+                raceState.nextBuoyIndex++; // Ahora es 4 (Meta)
+            } else {
+                // Cruzó la meta, reiniciar el ciclo para seguir iluminando boyas
+                raceState.nextBuoyIndex = 1; // Volver a Barlovento
+                console.log(`🔄 [Modo Fácil] Ciclo de boyas reiniciado`);
+            }
+            return; // No hacer nada más en modo Fácil
+        }
+        
+        // === MODO VUELTAS: Lógica original ===
         if (raceState.nextBuoyIndex < RACE_CIRCUIT.length - 1) {
-            // Avanzar a la siguiente boya normal
             raceState.nextBuoyIndex++;
         } else if (raceState.nextBuoyIndex === RACE_CIRCUIT.length - 1) {
-            // Acaba de pasar la última boya, ahora debe ir a la Meta
-            raceState.nextBuoyIndex++; // Se convierte en 4
+            raceState.nextBuoyIndex++; // Ahora es 4 (Meta)
         } else {
             // ¡Acaba de cruzar la Línea de Meta!
             const now = Date.now();
@@ -409,15 +422,14 @@ function checkBuoyPassage() {
             
             if (raceState.currentLap >= raceState.totalLaps) {
                 raceState.isFinished = true;
-                raceState.isActive = false; // DETIENE EL SIMULADOR
+                raceState.isActive = false;
                 raceState.playerFinishTime = (now - raceState.startTime) / 1000;
                 
                 console.log("🏆 ¡CARRERA TERMINADA! Activando pantalla de resultados en 0.5s...");
-                // Pequeña pausa para que el jugador vea que cruzó la línea antes de que salte el menú
                 setTimeout(() => {
                     showRaceResults();
                 }, 500);
-                return; // Salir inmediatamente
+                return;
             } else {
                 raceState.nextBuoyIndex = 1; 
                 raceState.lapStartTime = now;

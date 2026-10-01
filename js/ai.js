@@ -369,11 +369,59 @@ function makeAIDecisions(aiBoat) {
         targetBuoy = { x: 0, z: 600, radius: 60, name: "Meta" };
     }
     
-    // Calcular ángulo hacia el objetivo (geometría pura, no depende del viento)
+    // Calcular ángulo hacia el objetivo
     const dx = targetBuoy.x - aiBoat.x;
     const dz = targetBuoy.z - aiBoat.z;
     const targetAngle = normalizeAngle(Math.atan2(dx, dz) * (180 / Math.PI));
     
+    // ✅ NUEVO: PREDICCIÓN DE LÍMITES DEL MAPA
+    // Si el rumbo actual me lleva fuera del mapa en los próximos 3 segundos, desviar
+    const PREDICTION_MARGIN = 200; // Margen de predicción (200m antes del borde)
+    const FIELD_HALF_WIDTH = 2000;
+    const FIELD_HALF_HEIGHT = 1000;
+    
+    // Simular posición futura (3 segundos adelante a velocidad actual)
+    const futureSeconds = 3;
+    const speedFactor = aiBoat.speed * 0.04; // Mismo factor que en updateAIPhysics
+    const headingRad = degToRad(aiBoat.heading);
+    const futureX = aiBoat.x + Math.sin(headingRad) * speedFactor * futureSeconds * 60; // 60 frames por segundo
+    const futureZ = aiBoat.z + Math.cos(headingRad) * speedFactor * futureSeconds * 60;
+    
+    // ¿Me estoy acercando peligrosamente al borde?
+    let nearBoundary = false;
+    let boundaryDirection = 0;
+    
+    if (futureX > FIELD_HALF_WIDTH - PREDICTION_MARGIN) {
+        nearBoundary = true;
+        boundaryDirection = -1; // Estoy yendo hacia la derecha → desviar a la izquierda
+    } else if (futureX < -FIELD_HALF_WIDTH + PREDICTION_MARGIN) {
+        nearBoundary = true;
+        boundaryDirection = 1; // Estoy yendo hacia la izquierda → desviar a la derecha
+    }
+    
+    if (futureZ > FIELD_HALF_HEIGHT - PREDICTION_MARGIN) {
+        nearBoundary = true;
+        boundaryDirection = -1; // Estoy yendo hacia abajo → desviar hacia arriba
+    } else if (futureZ < -FIELD_HALF_HEIGHT + PREDICTION_MARGIN) {
+        nearBoundary = true;
+        boundaryDirection = 1; // Estoy yendo hacia arriba → desviar hacia abajo
+    }
+    
+    // Si estoy cerca del borde, forzar un rumbo que me aleje
+    if (nearBoundary) {
+        // Calcular ángulo hacia el centro del mapa
+        const angleToCenter = normalizeAngle(Math.atan2(-aiBoat.x, -aiBoat.z) * (180 / Math.PI));
+        
+        // Desviar 45° hacia el lado opuesto del borde
+        aiBoat.targetHeading = normalizeAngle(angleToCenter + (boundaryDirection * 45));
+        
+        // Resetear estado de ceñida para que no haga zigzag mientras se aleja
+        aiBoat.currentTack = undefined;
+        
+        console.log(`⚠️ [${aiBoat.personalityData.name}] Predijo límite → Desviando rumbo`);
+        return; // Salir de la función, no tomar otras decisiones
+    }
+      
     // === CORRECCIÓN CLAVE ===
     // CONFIG.trueWindDirection es HACIA DÓNDE va el viento (como las flechas del minimapa)
     // Para saber DE DONDE viene, le sumamos 180°
@@ -510,7 +558,7 @@ function updateAIPhysics(aiBoat, currentTime) {
         aiBoat.foilHeight = 1.0;
     }
 
-    // === LÍMITES DEL CAMPO DE REGATA (Con rebote inteligente) ===
+    // === LÍMITES DEL CAMPO DE REGATA (Con rebote inteligente + salto de boya) ===
     const FIELD_HALF_WIDTH = 2000;
     const FIELD_HALF_HEIGHT = 1000;
     const MARGIN = 50;
@@ -523,38 +571,64 @@ function updateAIPhysics(aiBoat, currentTime) {
     // Detectar y corregir colisión con límites
     if (aiBoat.x > FIELD_HALF_WIDTH - MARGIN) {
         aiBoat.x = FIELD_HALF_WIDTH - MARGIN;
-        aiBoat.speed *= 0.6;
+        aiBoat.speed *= 0.5;
         hitBoundary = true;
     } else if (aiBoat.x < -FIELD_HALF_WIDTH + MARGIN) {
         aiBoat.x = -FIELD_HALF_WIDTH + MARGIN;
-        aiBoat.speed *= 0.6;
+        aiBoat.speed *= 0.5;
         hitBoundary = true;
     }
     
     if (aiBoat.z > FIELD_HALF_HEIGHT - MARGIN) {
         aiBoat.z = FIELD_HALF_HEIGHT - MARGIN;
-        aiBoat.speed *= 0.6;
+        aiBoat.speed *= 0.5;
         hitBoundary = true;
     } else if (aiBoat.z < -FIELD_HALF_HEIGHT + MARGIN) {
         aiBoat.z = -FIELD_HALF_HEIGHT + MARGIN;
-        aiBoat.speed *= 0.6;
+        aiBoat.speed *= 0.5;
         hitBoundary = true;
     }
     
-    // Si tocó el límite, activar rebote
-    if (hitBoundary) {
-        aiBoat.bounceTimer = 120; // 2 segundos de rebote (120 frames)
-        // Apuntar directamente al centro del mapa
-        const angleToCenter = normalizeAngle(Math.atan2(-aiBoat.x, -aiBoat.z) * (180 / Math.PI));
-        aiBoat.targetHeading = angleToCenter;
-        console.log(`🔄 [${aiBoat.personalityData.name}] Rebotó del límite, volviendo al centro`);
+    // Si tocó el límite, activar rebote y SALTAR a la siguiente boya
+    if (hitBoundary && aiBoat.bounceTimer === 0) {
+        aiBoat.bounceTimer = 180; // 3 segundos de inmunidad
+        
+        // ✅ CLAVE: Saltar a la siguiente boya del circuito
+        if (aiBoat.nextBuoyIndex < RACE_CIRCUIT.length - 1) {
+            aiBoat.nextBuoyIndex++;
+        } else if (aiBoat.nextBuoyIndex === RACE_CIRCUIT.length - 1) {
+            aiBoat.nextBuoyIndex++; // Ir a la Meta
+        } else {
+            aiBoat.nextBuoyIndex = 1; // Si estaba en Meta, volver a Barlovento
+        }
+        
+        // Apuntar directamente a la nueva boya objetivo
+        let newTarget;
+        if (aiBoat.nextBuoyIndex < RACE_CIRCUIT.length) {
+            newTarget = RACE_CIRCUIT[aiBoat.nextBuoyIndex];
+        } else {
+            newTarget = { x: 0, z: 600 }; // Meta
+        }
+        
+        const dxNew = newTarget.x - aiBoat.x;
+        const dzNew = newTarget.z - aiBoat.z;
+        aiBoat.targetHeading = normalizeAngle(Math.atan2(dxNew, dzNew) * (180 / Math.PI));
+        
+        console.log(`🔄 [${aiBoat.personalityData.name}] Rebotó del límite → Saltó a boya ${aiBoat.nextBuoyIndex}`);
     }
     
-    // Durante el rebote, mantener el rumbo al centro
+    // Durante el rebote, mantener el rumbo a la nueva boya (no al centro)
     if (aiBoat.bounceTimer > 0) {
         aiBoat.bounceTimer--;
-        const angleToCenter = normalizeAngle(Math.atan2(-aiBoat.x, -aiBoat.z) * (180 / Math.PI));
-        aiBoat.targetHeading = angleToCenter;
+        let currentTarget;
+        if (aiBoat.nextBuoyIndex < RACE_CIRCUIT.length) {
+            currentTarget = RACE_CIRCUIT[aiBoat.nextBuoyIndex];
+        } else {
+            currentTarget = { x: 0, z: 600 };
+        }
+        const dxTarget = currentTarget.x - aiBoat.x;
+        const dzTarget = currentTarget.z - aiBoat.z;
+        aiBoat.targetHeading = normalizeAngle(Math.atan2(dxTarget, dzTarget) * (180 / Math.PI));
     }
 
     // === ORZADA VISUAL DE LA IA ===
